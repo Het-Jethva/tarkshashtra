@@ -255,7 +255,7 @@ class DashboardService {
     weekStart.setDate(now.getDate() - 6);
     weekStart.setHours(0, 0, 0, 0);
 
-    const [weekStats, aiFeedbackStats, sentiments, confidenceRows, lowConfidenceRows, timeRows, keywordRows] =
+    const [weekStats, aiFeedbackStats, sentiments, confidenceRows, lowConfidenceRows, timeRows, keywordSourceRows] =
       await Promise.all([
         db
           .select({
@@ -314,15 +314,30 @@ class DashboardService {
           .orderBy(sql`to_char(${complaints.createdAt}, 'YYYY-MM-DD')`),
         db
           .select({
-            key: sql<string>`jsonb_array_elements_text(${complaints.keywords})`,
-            count: sql<number>`count(*)::int`,
+            keywords: complaints.keywords,
           })
           .from(complaints)
           .where(and(gte(complaints.createdAt, weekStart), sql`${complaints.keywords} is not null`))
-          .groupBy(sql`jsonb_array_elements_text(${complaints.keywords})`)
-          .orderBy(sql`count(*)::int desc`)
-          .limit(10),
+          .limit(2000),
       ]);
+
+    const keywordCounter = new Map<string, number>();
+    for (const row of keywordSourceRows) {
+      const keywords = Array.isArray(row.keywords) ? row.keywords : [];
+      for (const rawKeyword of keywords) {
+        const keyword = rawKeyword.trim().toLowerCase();
+        if (!keyword) {
+          continue;
+        }
+
+        keywordCounter.set(keyword, (keywordCounter.get(keyword) ?? 0) + 1);
+      }
+    }
+
+    const keywordFrequency = [...keywordCounter.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([key, count]) => ({ key, count }));
 
     const daySet = new Set<string>();
     for (let i = 0; i < 7; i += 1) {
@@ -373,7 +388,7 @@ class DashboardService {
         (aiFeedbackStats[0]?.total ?? 0) > 0
           ? Math.round(((aiFeedbackStats[0]?.helpful ?? 0) / (aiFeedbackStats[0]?.total ?? 1)) * 100)
           : 0,
-      keywordFrequency: keywordRows,
+      keywordFrequency,
       complaintsOverTime: [...dayMap.values()].sort((a, b) => a.date.localeCompare(b.date)),
       sentimentDistribution: sentiments,
       confidenceBands: [
