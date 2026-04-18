@@ -3,12 +3,14 @@ import { Router } from "express";
 import { createId } from "../../lib/id.js";
 import { asyncHandler, type ApiSuccess } from "../../lib/http.js";
 import { sseHub } from "../../lib/sse-hub.js";
+import { requirePermission } from "../auth/rbac.js";
 import { dashboardService } from "./dashboard.service.js";
 
 const dashboardRouter = Router();
 
 dashboardRouter.get(
   "/summary",
+  requirePermission("dashboard:read"),
   asyncHandler(async (_req, res) => {
     const summary = await dashboardService.getSummary();
 
@@ -23,6 +25,7 @@ dashboardRouter.get(
 
 dashboardRouter.get(
   "/sla-overview",
+  requirePermission("dashboard:read"),
   asyncHandler(async (_req, res) => {
     const result = await dashboardService.getSlaOverview();
 
@@ -37,6 +40,7 @@ dashboardRouter.get(
 
 dashboardRouter.get(
   "/workload",
+  requirePermission("dashboard:read"),
   asyncHandler(async (_req, res) => {
     const result = await dashboardService.getWorkloadDistribution();
 
@@ -49,7 +53,7 @@ dashboardRouter.get(
   }),
 );
 
-dashboardRouter.get("/stream", (req, res) => {
+dashboardRouter.get("/stream", requirePermission("dashboard:stream"), (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");

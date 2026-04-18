@@ -1,73 +1,45 @@
-# React + TypeScript + Vite
+# AI Complaint Triage System - Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This is the production-ready frontend for the AI Complaint Triage System, built with Vite, React, TypeScript, and Tailwind CSS. It follows a "Refined Utility" aesthetic, offering a clean, high-contrast, and fast user interface.
 
-Currently, two official plugins are available:
+## Personas & Features
+1. **End Customer**: Public-facing intake form for direct complaint submission (`/`).
+2. **Support Executive**: Admin dashboard for managing the complaint queue, tracking KPIs, resolving issues, and manually logging complaints (`/admin/*`).
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Key Views
+- **Customer Intake**: Form at root. Submits direct to AI triage.
+- **Admin Dashboard**: Live-updating KPIs (via SSE), charts for workload & SLA.
+- **Complaint Queue**: Full pagination and complex filtering against the triage API.
+- **Complaint Details**: Shows AI reasoning, confidence, and recommended actions. Strict state machine for status updates.
 
-## React Compiler
+## Tech Stack
+- **Framework**: React 19 + Vite
+- **Styling**: Tailwind CSS v4
+- **Routing**: React Router v6
+- **Forms**: React Hook Form + Zod
+- **Charts**: Recharts
+- **Toast**: Sonner
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Setup & Running
 
-## Expanding the ESLint configuration
+1. **Install dependencies**:
+   ```bash
+   npm install
+   ```
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+2. **Environment Variables**:
+   Create a `.env` file or rely on the default fallback to the backend port.
+   ```env
+   VITE_API_BASE_URL=http://localhost:4000/api
+   ```
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+3. **Development Server**:
+   ```bash
+   npm run dev
+   ```
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
-
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+4. **Production Build**:
+   ```bash
+   npm run build
+   npm run preview
+   ```

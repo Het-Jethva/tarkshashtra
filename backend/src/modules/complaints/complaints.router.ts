@@ -2,6 +2,7 @@ import { Router } from "express";
 
 import { asyncHandler, type ApiSuccess } from "../../lib/http.js";
 import { ValidationError } from "../../lib/errors.js";
+import { getActorFromRequest, requirePermission } from "../auth/rbac.js";
 import {
   createComplaintSchema,
   createDirectCustomerComplaintSchema,
@@ -23,9 +24,11 @@ function normalizeComplaintId(value: string | string[] | undefined): string {
 
 complaintsRouter.post(
   "/",
+  requirePermission("complaints:create"),
   asyncHandler(async (req, res) => {
+    const actor = getActorFromRequest(req);
     const payload = createComplaintSchema.parse(req.body);
-    const details = await complaintsService.createComplaint(payload);
+    const details = await complaintsService.createComplaint(payload, actor.name);
 
     const response: ApiSuccess<typeof details> = {
       success: true,
@@ -53,6 +56,7 @@ complaintsRouter.post(
 
 complaintsRouter.get(
   "/",
+  requirePermission("complaints:read"),
   asyncHandler(async (req, res) => {
     const query = listComplaintsQuerySchema.parse(req.query);
     const result = await complaintsService.listComplaints(query);
@@ -68,6 +72,7 @@ complaintsRouter.get(
 
 complaintsRouter.get(
   "/queue/stats",
+  requirePermission("complaints:read"),
   asyncHandler(async (_req, res) => {
     const stats = await complaintsService.getQueueStats();
 
@@ -82,6 +87,7 @@ complaintsRouter.get(
 
 complaintsRouter.get(
   "/:id",
+  requirePermission("complaints:read"),
   asyncHandler(async (req, res) => {
     const complaintId = normalizeComplaintId(req.params.id);
 
@@ -98,11 +104,13 @@ complaintsRouter.get(
 
 complaintsRouter.patch(
   "/:id/status",
+  requirePermission("complaints:update_status"),
   asyncHandler(async (req, res) => {
+    const actor = getActorFromRequest(req);
     const complaintId = normalizeComplaintId(req.params.id);
 
     const payload = updateComplaintStatusSchema.parse(req.body);
-    const details = await complaintsService.updateStatus(complaintId, payload);
+    const details = await complaintsService.updateStatus(complaintId, payload, actor.name);
 
     const response: ApiSuccess<typeof details> = {
       success: true,
@@ -115,6 +123,7 @@ complaintsRouter.patch(
 
 complaintsRouter.post(
   "/:id/retry-triage",
+  requirePermission("complaints:retry_triage"),
   asyncHandler(async (req, res) => {
     const complaintId = normalizeComplaintId(req.params.id);
 

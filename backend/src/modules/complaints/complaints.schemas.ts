@@ -13,7 +13,6 @@ export const createComplaintSchema = z.object({
   content: z.string().trim().min(10).max(10000),
   customerName: z.string().trim().min(2).max(120).optional(),
   customerContact: z.string().trim().min(3).max(150).optional(),
-  createdBy: z.string().trim().min(2).max(120).optional(),
 });
 
 const customerComplaintTextSchema = z.string().trim().min(10).max(10000);
@@ -52,7 +51,6 @@ export const listComplaintsQuerySchema = z.object({
 export const updateComplaintStatusSchema = z.object({
   status: z.enum(complaintStatusEnum.enumValues),
   note: z.string().trim().min(2).max(1000).optional(),
-  changedBy: z.string().trim().min(2).max(120).optional(),
 });
 
 export type CreateComplaintInput = z.infer<typeof createComplaintSchema>;

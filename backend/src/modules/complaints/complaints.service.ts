@@ -57,8 +57,8 @@ class ComplaintsService {
     return (input.content ?? input.summary ?? input.complaint ?? "").trim();
   }
 
-  async createComplaint(input: CreateComplaintInput) {
-    const complaint = await complaintsRepository.createComplaint(input);
+  async createComplaint(input: CreateComplaintInput, createdBy: string) {
+    const complaint = await complaintsRepository.createComplaint(input, createdBy);
 
     const triageResult = await triageService.triageComplaint(complaint.content);
     if (!triageResult.ok) {
@@ -133,8 +133,7 @@ class ComplaintsService {
       customerName: input.customerName,
       customerContact: input.customerContact,
       content: this.normalizeDirectComplaintContent(input),
-      createdBy: "End Customer",
-    });
+    }, "End Customer");
 
     return details;
   }
@@ -223,7 +222,7 @@ class ComplaintsService {
     return details;
   }
 
-  async updateStatus(complaintId: string, input: UpdateComplaintStatusInput) {
+  async updateStatus(complaintId: string, input: UpdateComplaintStatusInput, changedBy: string) {
     const complaint = await complaintsRepository.getComplaintById(complaintId);
     if (!complaint) {
       throw new NotFoundError("Complaint not found", { complaintId });
@@ -272,7 +271,7 @@ class ComplaintsService {
       complaintId,
       fromStatus: complaint.status,
       toStatus: input.status,
-      changedBy: input.changedBy ?? "Support Executive",
+      changedBy,
       note: input.note,
     });
 

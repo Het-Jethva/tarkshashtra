@@ -61,6 +61,7 @@ Production-ready TypeScript backend for AI-powered complaint classification, pri
 ## Key API routes
 
 - `GET /api/health`
+- `GET /api/auth/me`
 - `POST /api/complaints`
 - `POST /api/complaints/customer-direct`
 - `GET /api/complaints`
@@ -74,6 +75,53 @@ Production-ready TypeScript backend for AI-powered complaint classification, pri
 - `GET /api/dashboard/stream` (SSE)
 - `GET /api/reports/export.csv`
 - `GET /api/reports/export.pdf`
+
+## RBAC matrix (hackathon demo)
+
+Role input (for demo):
+
+- Send `x-user-role` and `x-user-name` headers on API requests.
+- Supported roles: `support_executive`, `quality_assurance`, `operations_manager`.
+- For browser download/SSE links, fallback query params are supported: `asRole`, `asName`.
+
+Role labels used in UI:
+
+- `support_executive` -> Customer Support Executive
+- `quality_assurance` -> Quality Assurance Team
+- `operations_manager` -> Operations Manager
+
+Endpoint access matrix:
+
+| Endpoint | Support Executive | QA Team | Operations Manager |
+| --- | --- | --- | --- |
+| `GET /api/auth/me` | Yes | Yes | Yes |
+| `POST /api/complaints` | Yes | No | No |
+| `POST /api/complaints/customer-direct` | Public (no role required) | Public | Public |
+| `GET /api/complaints` | Yes | Yes | No |
+| `GET /api/complaints/:id` | Yes | Yes | No |
+| `PATCH /api/complaints/:id/status` | Yes | No | No |
+| `POST /api/complaints/:id/retry-triage` | Yes | Yes | No |
+| `GET /api/complaints/queue/stats` | Yes | Yes | No |
+| `GET /api/dashboard/summary` | No | Yes | Yes |
+| `GET /api/dashboard/sla-overview` | No | Yes | Yes |
+| `GET /api/dashboard/workload` | No | Yes | Yes |
+| `GET /api/dashboard/stream` | No | Yes | Yes |
+| `GET /api/reports/export.csv` | No | Yes | Yes |
+| `GET /api/reports/export.pdf` | No | Yes | Yes |
+
+## 60-second demo script
+
+1. Open the frontend and switch role to **Customer Support Executive** in the admin sidebar.
+2. Go to `/admin/complaints/new`, submit a complaint, and show that complaint status can be updated in details.
+3. Switch role to **Quality Assurance Team** and show:
+   - complaint list/details are visible,
+   - status update is read-only,
+   - dashboard and exports are available.
+4. Switch role to **Operations Manager** and show:
+   - dashboard/SLA/workload are visible,
+   - export links work,
+   - complaint queue/detail routes are blocked by RBAC.
+5. Optional API proof (Postman/curl): call `GET /api/auth/me` with each `x-user-role` value and show permission differences.
 
 ## Operational notes
 

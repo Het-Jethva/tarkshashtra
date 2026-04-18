@@ -1,6 +1,7 @@
 import { Router } from "express";
 
 import { asyncHandler } from "../../lib/http.js";
+import { requirePermission } from "../auth/rbac.js";
 import { reportQuerySchema } from "./reports.schemas.js";
 import { reportsService } from "./reports.service.js";
 
@@ -8,6 +9,7 @@ const reportsRouter = Router();
 
 reportsRouter.get(
   "/export.csv",
+  requirePermission("reports:export"),
   asyncHandler(async (req, res) => {
     const query = reportQuerySchema.parse(req.query);
     const csv = await reportsService.generateCsv(query);
@@ -20,6 +22,7 @@ reportsRouter.get(
 
 reportsRouter.get(
   "/export.pdf",
+  requirePermission("reports:export"),
   asyncHandler(async (req, res) => {
     const query = reportQuerySchema.parse(req.query);
     const pdfBuffer = await reportsService.generatePdf(query);

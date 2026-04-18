@@ -79,7 +79,7 @@ function buildListWhereClause(filters: ListComplaintsQueryInput): SQL<unknown> |
 }
 
 class ComplaintsRepository {
-  async createComplaint(input: CreateComplaintInput): Promise<ComplaintRecord> {
+  async createComplaint(input: CreateComplaintInput, createdBy: string): Promise<ComplaintRecord> {
     const now = new Date();
     const [created] = await db
       .insert(complaints)
@@ -104,7 +104,7 @@ class ComplaintsRepository {
       complaintId: created.id,
       fromStatus: null,
       toStatus: "New",
-      changedBy: input.createdBy ?? "Support Executive",
+      changedBy: createdBy,
       note: "Complaint submitted",
     });
 
