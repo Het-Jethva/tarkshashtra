@@ -16,7 +16,7 @@ export const triageResponseSchema = z.object({
   confidence: z.number().min(0).max(1),
   sentiment: complaintSentimentSchema,
   sentiment_score: z.number().int().min(0).max(100),
-  keywords: z.array(z.string().min(2).max(80)).min(3).max(12),
+  keywords: z.array(z.string().min(2).max(80)).min(2).max(12),
   priority_reason: z.string().min(8).max(400),
   summary: z.string().min(5).max(400),
   reasoning: z.string().min(10).max(1200),

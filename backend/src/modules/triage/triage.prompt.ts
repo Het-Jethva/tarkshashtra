@@ -10,7 +10,7 @@ export function buildTriageSystemPrompt(): string {
     "Always produce exactly 3 to 5 recommended_actions.",
     "Also return:",
     '- sentiment_score: integer from 0 to 100',
-    '- keywords: array of 3 to 12 short complaint keywords',
+    '- keywords: array of 2 to 12 short complaint keywords',
     '- priority_reason: one sentence explaining the assigned priority',
     "Each recommended action must include:",
     '- action: short actionable instruction',
