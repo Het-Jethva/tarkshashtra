@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const complaintCategorySchema = z.enum(["Product", "Packaging", "Trade"]);
 export const complaintPrioritySchema = z.enum(["High", "Medium", "Low"]);
+export const complaintSentimentSchema = z.enum(["Angry", "Frustrated", "Neutral", "Satisfied"]);
 
 export const triageActionSchema = z.object({
   action: z.string().min(3).max(200),
@@ -13,6 +14,10 @@ export const triageResponseSchema = z.object({
   category: complaintCategorySchema,
   priority: complaintPrioritySchema,
   confidence: z.number().min(0).max(1),
+  sentiment: complaintSentimentSchema,
+  sentiment_score: z.number().int().min(0).max(100),
+  keywords: z.array(z.string().min(2).max(80)).min(3).max(12),
+  priority_reason: z.string().min(8).max(400),
   summary: z.string().min(5).max(400),
   reasoning: z.string().min(10).max(1200),
   urgency_signals: z.array(z.string().min(2).max(100)).max(8),

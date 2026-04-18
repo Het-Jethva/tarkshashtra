@@ -1,12 +1,14 @@
 import PDFDocument from "pdfkit";
 
-import type { ComplaintStatus } from "../../db/types.js";
+import type { ComplaintCategory, ComplaintStatus } from "../../db/types.js";
 import { complaintsRepository } from "../complaints/complaints.repository.js";
 
 type ReportFilters = {
   from?: Date;
   to?: Date;
   status?: ComplaintStatus;
+  category?: ComplaintCategory;
+  agent?: string;
 };
 
 function escapeCsvValue(value: string): string {
@@ -15,20 +17,69 @@ function escapeCsvValue(value: string): string {
 }
 
 class ReportsService {
+  async getPreviewRows(filters: ReportFilters): Promise<
+    Array<{
+      id: string;
+      createdAt: string;
+      assignedTo: string | null;
+      customerName: string | null;
+      category: string | null;
+      priority: string | null;
+      sentiment: string | null;
+      status: string;
+      confidencePercent: number | null;
+    }>
+  > {
+    const rows = await complaintsRepository.fetchComplaintsForExport({
+      from: filters.from,
+      to: filters.to,
+      status: filters.status,
+      category: filters.category,
+      assignedTo: filters.agent,
+    });
+
+    return rows.slice(0, 200).map((row) => ({
+      id: row.id,
+      createdAt: row.createdAt.toISOString(),
+      assignedTo: row.assignedTo,
+      customerName: row.customerName,
+      category: row.category,
+      priority: row.priority,
+      sentiment: row.sentiment,
+      status: row.status,
+      confidencePercent:
+        row.confidence === null || row.confidence === undefined ? null : Math.round(row.confidence * 100),
+    }));
+  }
+
   async generateCsv(filters: ReportFilters): Promise<string> {
-    const rows = await complaintsRepository.fetchComplaintsForExport(filters);
+    const rows = await complaintsRepository.fetchComplaintsForExport({
+      from: filters.from,
+      to: filters.to,
+      status: filters.status,
+      category: filters.category,
+      assignedTo: filters.agent,
+    });
     const headers = [
-      "id",
-      "source",
-      "category",
-      "priority",
-      "status",
-      "triage_status",
+      "complaint_id",
+      "date_submitted",
+      "agent_name",
       "customer_name",
-      "created_at",
-      "resolution_due_at",
-      "resolved_at",
-      "summary",
+      "customer_contact",
+      "source_channel",
+      "raw_complaint_text",
+      "ai_category",
+      "confidence_percent",
+      "sentiment",
+      "sentiment_score",
+      "priority",
+      "priority_reason",
+      "duplicate_of_complaint_id",
+      "repeat_complainant",
+      "sla_status",
+      "resolution_time_hours",
+      "status",
+      "ai_recommendation_helpful",
     ];
 
     const csvRows = [headers.join(",")];
@@ -37,16 +88,42 @@ class ReportsService {
       csvRows.push(
         [
           row.id,
-          row.source,
-          row.category ?? "",
-          row.priority ?? "",
-          row.status,
-          row.triageStatus,
-          row.customerName ?? "",
           row.createdAt.toISOString(),
-          row.resolutionDueAt?.toISOString() ?? "",
-          row.resolvedAt?.toISOString() ?? "",
-          row.summary ?? "",
+          row.assignedTo ?? "",
+          row.customerName ?? "",
+          row.customerContact ?? "",
+          row.source,
+          row.content,
+          row.category ?? "",
+          row.confidence !== null && row.confidence !== undefined
+            ? String(Math.round(row.confidence * 100))
+            : "",
+          row.sentiment ?? "",
+          row.sentimentScore !== null && row.sentimentScore !== undefined
+            ? String(row.sentimentScore)
+            : "",
+          row.priority ?? "",
+          row.priorityReason ?? "",
+          row.duplicateOfComplaintId ?? "",
+          row.isRepeatComplainant ? "yes" : "no",
+          row.resolvedAt && row.resolutionDueAt
+            ? row.resolvedAt <= row.resolutionDueAt
+              ? "Met"
+              : "Breached"
+            : row.resolutionDueAt && row.resolutionDueAt < new Date()
+              ? "Breached"
+              : "At Risk",
+          row.resolvedAt
+            ? String(
+                ((row.resolvedAt.getTime() - row.createdAt.getTime()) / (1000 * 60 * 60)).toFixed(2),
+              )
+            : "",
+          row.status,
+          row.aiHelpful === null || row.aiHelpful === undefined
+            ? ""
+            : row.aiHelpful
+              ? "yes"
+              : "no",
         ]
           .map((value) => escapeCsvValue(value))
           .join(","),
@@ -57,7 +134,27 @@ class ReportsService {
   }
 
   async generatePdf(filters: ReportFilters): Promise<Buffer> {
-    const rows = await complaintsRepository.fetchComplaintsForExport(filters);
+    const rows = await complaintsRepository.fetchComplaintsForExport({
+      from: filters.from,
+      to: filters.to,
+      status: filters.status,
+      category: filters.category,
+      assignedTo: filters.agent,
+    });
+    const summary = await complaintsRepository.getExportSummary({
+      from: filters.from,
+      to: filters.to,
+      status: filters.status,
+      category: filters.category,
+      assignedTo: filters.agent,
+    });
+    const agentPerformance = await complaintsRepository.getAgentPerformanceSummary({
+      from: filters.from,
+      to: filters.to,
+      status: filters.status,
+      category: filters.category,
+      assignedTo: filters.agent,
+    });
 
     const doc = new PDFDocument({ margin: 40, size: "A4" });
     const chunks: Buffer[] = [];
@@ -73,15 +170,49 @@ class ReportsService {
       doc.text(`Total records: ${rows.length}`);
       doc.moveDown(0.8);
 
+      doc.fontSize(13).text("Summary", { underline: true });
+      doc.moveDown(0.3);
+      doc.fontSize(10).text(`SLA compliance: ${summary.slaCompliancePercent}%`);
+      doc.text(`Average resolution time: ${summary.avgResolutionHours}h`);
+      doc.text(`Low-confidence complaints (<60%): ${summary.lowConfidence}`);
+      doc.text(
+        `Category distribution: ${summary.byCategory
+          .map((item) => `${item.key} (${item.count})`)
+          .join(", ")}`,
+      );
+      doc.text(
+        `Priority distribution: ${summary.byPriority
+          .map((item) => `${item.key} (${item.count})`)
+          .join(", ")}`,
+      );
+      doc.moveDown(0.8);
+
+      doc.fontSize(13).text("Agent Performance", { underline: true });
+      doc.moveDown(0.3);
+      for (const agent of agentPerformance) {
+        doc
+          .fontSize(10)
+          .text(
+            `${agent.agentName}: assigned ${agent.assignedCount}, resolved ${agent.resolvedCount}, SLA ${agent.slaMetPercent}%, avg ${agent.avgResolutionHours}h, AI helpful ${agent.helpfulnessPercent}%`,
+          );
+      }
+      doc.moveDown(0.8);
+
+      doc.fontSize(13).text("Complaints", { underline: true });
+      doc.moveDown(0.3);
+
       for (const row of rows) {
         doc
           .fontSize(11)
           .text(`ID: ${row.id}`)
           .fontSize(10)
-          .text(`Source: ${row.source} | Category: ${row.category ?? "-"} | Priority: ${row.priority ?? "-"}`)
-          .text(`Status: ${row.status} | Triage: ${row.triageStatus}`)
+          .text(
+            `Source: ${row.source} | Category: ${row.category ?? "-"} | Priority: ${row.priority ?? "-"} | Sentiment: ${row.sentiment ?? "-"}`,
+          )
+          .text(`Status: ${row.status} | Triage: ${row.triageStatus} | Assigned: ${row.assignedTo ?? "Unassigned"}`)
           .text(`Created: ${row.createdAt.toISOString()}`)
           .text(`Summary: ${row.summary ?? "No summary"}`)
+          .text(`Duplicate: ${row.duplicateOfComplaintId ?? "No"} | Repeat: ${row.isRepeatComplainant ? "Yes" : "No"}`)
           .moveDown(0.5);
 
         if (doc.y > 730) {

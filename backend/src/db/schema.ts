@@ -17,6 +17,12 @@ export const complaintCategoryEnum = pgEnum("complaint_category", [
   "Packaging",
   "Trade",
 ]);
+export const sentimentEnum = pgEnum("complaint_sentiment", [
+  "Angry",
+  "Frustrated",
+  "Neutral",
+  "Satisfied",
+]);
 export const priorityEnum = pgEnum("complaint_priority", ["High", "Medium", "Low"]);
 export const complaintStatusEnum = pgEnum("complaint_status", [
   "New",
@@ -31,11 +37,16 @@ export const triageStatusEnum = pgEnum("triage_status", ["pending", "success", "
 export const actionStatusEnum = pgEnum("action_status", ["Pending", "Done", "Skipped"]);
 export const slaEventTypeEnum = pgEnum("sla_event_type", ["warning", "breach", "met"]);
 export const slaMetricEnum = pgEnum("sla_metric", ["first_response", "resolution"]);
+export const overrideFieldEnum = pgEnum("override_field", ["category", "priority"]);
 
 export type TriageRawOutput = {
   category: "Product" | "Packaging" | "Trade";
   priority: "High" | "Medium" | "Low";
   confidence: number;
+  sentiment: "Angry" | "Frustrated" | "Neutral" | "Satisfied";
+  sentiment_score: number;
+  keywords: string[];
+  priority_reason: string;
   summary: string;
   reasoning: string;
   urgency_signals: string[];
@@ -52,14 +63,33 @@ export const complaints = pgTable(
   {
     id: text("id").primaryKey(),
     source: complaintSourceEnum("source").notNull(),
+    assignedTo: text("assigned_to"),
     customerName: text("customer_name"),
+    customerNameNormalized: text("customer_name_normalized"),
     customerContact: text("customer_contact"),
+    customerContactNormalized: text("customer_contact_normalized"),
     content: text("content").notNull(),
     category: complaintCategoryEnum("category"),
     priority: priorityEnum("priority"),
     confidence: real("confidence"),
+    sentiment: sentimentEnum("sentiment"),
+    sentimentScore: integer("sentiment_score"),
+    keywords: jsonb("keywords").$type<string[]>(),
+    priorityReason: text("priority_reason"),
     summary: text("summary"),
     reasoning: text("reasoning"),
+    duplicateOfComplaintId: text("duplicate_of_complaint_id"),
+    duplicateScore: real("duplicate_score"),
+    isRepeatComplainant: boolean("is_repeat_complainant").notNull().default(false),
+    repeatCount7d: integer("repeat_count_7d").notNull().default(0),
+    aiHelpful: boolean("ai_helpful"),
+    aiHelpfulAt: timestamp("ai_helpful_at", { withTimezone: true, mode: "date" }),
+    qaVerifiedCategory: complaintCategoryEnum("qa_verified_category"),
+    qaReviewedBy: text("qa_reviewed_by"),
+    qaReviewedAt: timestamp("qa_reviewed_at", { withTimezone: true, mode: "date" }),
+    needsRetraining: boolean("needs_retraining").notNull().default(false),
+    managerOverridden: boolean("manager_overridden").notNull().default(false),
+    managerOverrideReason: text("manager_override_reason"),
     status: complaintStatusEnum("status").notNull().default("New"),
     triageStatus: triageStatusEnum("triage_status").notNull().default("pending"),
     firstResponseDueAt: timestamp("first_response_due_at", { withTimezone: true, mode: "date" }),
@@ -73,8 +103,37 @@ export const complaints = pgTable(
     statusIdx: index("complaints_status_idx").on(table.status),
     priorityIdx: index("complaints_priority_idx").on(table.priority),
     categoryIdx: index("complaints_category_idx").on(table.category),
+    sentimentIdx: index("complaints_sentiment_idx").on(table.sentiment),
+    needsRetrainingIdx: index("complaints_needs_retraining_idx").on(table.needsRetraining),
+    assignedToIdx: index("complaints_assigned_to_idx").on(table.assignedTo),
+    customerContactNormalizedIdx: index("complaints_customer_contact_normalized_idx").on(
+      table.customerContactNormalized,
+    ),
+    customerNameNormalizedIdx: index("complaints_customer_name_normalized_idx").on(
+      table.customerNameNormalized,
+    ),
     createdAtIdx: index("complaints_created_at_idx").on(table.createdAt),
     resolutionDueAtIdx: index("complaints_resolution_due_at_idx").on(table.resolutionDueAt),
+  }),
+);
+
+export const complaintOverrides = pgTable(
+  "complaint_overrides",
+  {
+    id: text("id").primaryKey(),
+    complaintId: text("complaint_id")
+      .notNull()
+      .references(() => complaints.id, { onDelete: "cascade" }),
+    field: overrideFieldEnum("field").notNull(),
+    fromValue: text("from_value"),
+    toValue: text("to_value").notNull(),
+    reason: text("reason").notNull(),
+    changedBy: text("changed_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (table) => ({
+    complaintIdIdx: index("complaint_overrides_complaint_id_idx").on(table.complaintId),
+    createdAtIdx: index("complaint_overrides_created_at_idx").on(table.createdAt),
   }),
 );
 

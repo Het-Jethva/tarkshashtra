@@ -33,4 +33,18 @@ reportsRouter.get(
   }),
 );
 
+reportsRouter.get(
+  "/preview",
+  requirePermission("reports:export"),
+  asyncHandler(async (req, res) => {
+    const query = reportQuerySchema.parse(req.query);
+    const rows = await reportsService.getPreviewRows(query);
+
+    res.status(200).json({
+      success: true,
+      data: rows,
+    });
+  }),
+);
+
 export { reportsRouter };

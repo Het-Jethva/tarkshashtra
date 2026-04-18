@@ -4,6 +4,9 @@ import { asyncHandler, type ApiSuccess } from "../../lib/http.js";
 import { ValidationError } from "../../lib/errors.js";
 import { getActorFromRequest, requirePermission } from "../auth/rbac.js";
 import {
+  complaintAiFeedbackSchema,
+  complaintOverrideSchema,
+  complaintQaReviewSchema,
   createComplaintSchema,
   createDirectCustomerComplaintSchema,
   listComplaintsQuerySchema,
@@ -128,6 +131,75 @@ complaintsRouter.post(
     const complaintId = normalizeComplaintId(req.params.id);
 
     const details = await complaintsService.retryTriage(complaintId);
+
+    const response: ApiSuccess<typeof details> = {
+      success: true,
+      data: details,
+    };
+
+    res.status(200).json(response);
+  }),
+);
+
+complaintsRouter.get(
+  "/queue/agent-alerts",
+  requirePermission("complaints:read"),
+  asyncHandler(async (req, res) => {
+    const actor = getActorFromRequest(req);
+    const alerts = await complaintsService.getAgentSlaAlerts(actor.name);
+
+    const response: ApiSuccess<typeof alerts> = {
+      success: true,
+      data: alerts,
+    };
+
+    res.status(200).json(response);
+  }),
+);
+
+complaintsRouter.post(
+  "/:id/ai-feedback",
+  requirePermission("complaints:update_status"),
+  asyncHandler(async (req, res) => {
+    const complaintId = normalizeComplaintId(req.params.id);
+    const payload = complaintAiFeedbackSchema.parse(req.body);
+    const details = await complaintsService.recordAiFeedback(complaintId, payload);
+
+    const response: ApiSuccess<typeof details> = {
+      success: true,
+      data: details,
+    };
+
+    res.status(200).json(response);
+  }),
+);
+
+complaintsRouter.post(
+  "/:id/qa-review",
+  requirePermission("complaints:retry_triage"),
+  asyncHandler(async (req, res) => {
+    const actor = getActorFromRequest(req);
+    const complaintId = normalizeComplaintId(req.params.id);
+    const payload = complaintQaReviewSchema.parse(req.body);
+    const details = await complaintsService.reviewLowConfidenceComplaint(complaintId, payload, actor.name);
+
+    const response: ApiSuccess<typeof details> = {
+      success: true,
+      data: details,
+    };
+
+    res.status(200).json(response);
+  }),
+);
+
+complaintsRouter.post(
+  "/:id/override",
+  requirePermission("complaints:override"),
+  asyncHandler(async (req, res) => {
+    const actor = getActorFromRequest(req);
+    const complaintId = normalizeComplaintId(req.params.id);
+    const payload = complaintOverrideSchema.parse(req.body);
+    const details = await complaintsService.overrideComplaint(complaintId, payload, actor.name);
 
     const response: ApiSuccess<typeof details> = {
       success: true,

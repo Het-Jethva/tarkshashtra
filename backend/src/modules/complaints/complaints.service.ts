@@ -7,12 +7,15 @@ import type { ComplaintPriority, ComplaintStatus } from "../../db/types.js";
 import { NotFoundError, ValidationError } from "../../lib/errors.js";
 import { sseHub } from "../../lib/sse-hub.js";
 import type {
+  ComplaintAiFeedbackInput,
+  ComplaintQaReviewInput,
+  ComplaintOverrideInput,
   CreateComplaintInput,
   CreateDirectCustomerComplaintInput,
   ListComplaintsQueryInput,
   UpdateComplaintStatusInput,
 } from "./complaints.schemas.js";
-import { complaintsRepository } from "./complaints.repository.js";
+import { complaintsRepository, type ComplaintRecord } from "./complaints.repository.js";
 import { triageService } from "../triage/triage.service.js";
 
 type SlaPolicy = {
@@ -36,6 +39,35 @@ const ALLOWED_TRANSITIONS: Record<ComplaintStatus, ComplaintStatus[]> = {
   TriageFailed: ["Triaged", "InProgress", "WaitingCustomer", "Resolved", "Closed"],
 };
 
+const SENTIMENT_PRIORITY_WEIGHT: Record<"Angry" | "Frustrated" | "Neutral" | "Satisfied", number> = {
+  Angry: 35,
+  Frustrated: 20,
+  Neutral: 5,
+  Satisfied: 0,
+};
+
+const SEVERITY_KEYWORDS = [
+  "refund",
+  "damaged",
+  "delay",
+  "broken",
+  "fraud",
+  "unsafe",
+  "legal",
+  "urgent",
+  "escalate",
+];
+
+type PriorityScoreContext = {
+  sentiment: "Angry" | "Frustrated" | "Neutral" | "Satisfied";
+  sentimentScore: number;
+  keywords: string[];
+  repeatCount7d: number;
+  isRepeatComplainant: boolean;
+  createdAt: Date;
+  dueAt: Date;
+};
+
 function computeSlaDeadlines(priority: ComplaintPriority, baseDate = new Date()): {
   firstResponseDueAt: Date;
   resolutionDueAt: Date;
@@ -52,9 +84,165 @@ function canTransition(from: ComplaintStatus, to: ComplaintStatus): boolean {
   return ALLOWED_TRANSITIONS[from].includes(to);
 }
 
+function computePriorityFromScore(score: number): ComplaintPriority {
+  if (score >= 68) {
+    return "High";
+  }
+
+  if (score >= 34) {
+    return "Medium";
+  }
+
+  return "Low";
+}
+
+function normalizeKeyword(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function calculatePriorityScore(context: PriorityScoreContext, currentTime = new Date()): {
+  score: number;
+  computedPriority: ComplaintPriority;
+  reason: string;
+} {
+  const sentimentWeight = SENTIMENT_PRIORITY_WEIGHT[context.sentiment];
+  const sentimentComponent = Math.round(sentimentWeight * (context.sentimentScore / 100));
+
+  const normalizedKeywords = context.keywords.map(normalizeKeyword);
+  const severityMatches = normalizedKeywords.filter((keyword) =>
+    SEVERITY_KEYWORDS.some((severityKeyword) => keyword.includes(severityKeyword)),
+  );
+  const keywordComponent = Math.min(30, severityMatches.length * 10);
+
+  const repeatComponent = context.isRepeatComplainant ? Math.min(20, 8 + context.repeatCount7d * 4) : 0;
+
+  const totalSlaMs = context.dueAt.getTime() - context.createdAt.getTime();
+  const elapsedMs = currentTime.getTime() - context.createdAt.getTime();
+  const ratio = totalSlaMs <= 0 ? 1 : Math.min(1.5, Math.max(0, elapsedMs / totalSlaMs));
+  const slaComponent = Math.min(15, Math.round(15 * ratio));
+
+  const score = Math.min(100, sentimentComponent + keywordComponent + repeatComponent + slaComponent);
+  let computedPriority = computePriorityFromScore(score);
+
+  if (context.sentiment === "Angry" && context.sentimentScore >= 80) {
+    computedPriority = "High";
+  }
+  if (context.isRepeatComplainant && ratio >= 0.8) {
+    computedPriority = "High";
+  }
+
+  const reasonParts: string[] = [];
+  reasonParts.push(`${context.sentiment} sentiment (${context.sentimentScore})`);
+  if (severityMatches.length > 0) {
+    reasonParts.push(`keywords: ${severityMatches.slice(0, 3).join(", ")}`);
+  }
+  if (context.isRepeatComplainant) {
+    reasonParts.push(`repeat complaint (${context.repeatCount7d} in 7d)`);
+  }
+  if (ratio >= 0.8) {
+    reasonParts.push("SLA at risk");
+  }
+
+  return {
+    score,
+    computedPriority,
+    reason: reasonParts.join("; "),
+  };
+}
+
+function getPriorityScoreBaseDate(complaint: ComplaintRecord): Date {
+  return complaint.firstResponseAt ?? complaint.createdAt;
+}
+
 class ComplaintsService {
   private normalizeDirectComplaintContent(input: CreateDirectCustomerComplaintInput): string {
     return (input.content ?? input.summary ?? input.complaint ?? "").trim();
+  }
+
+  private async getRepeatContext(complaint: ComplaintRecord): Promise<{
+    isRepeatComplainant: boolean;
+    repeatCount7d: number;
+  }> {
+    const lookbackStart = new Date(complaint.createdAt.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const matches = await complaintsRepository.getRecentComplaintsByCustomer({
+      customerNameNormalized: complaint.customerNameNormalized,
+      customerContactNormalized: complaint.customerContactNormalized,
+      lookbackStart,
+    });
+
+    const repeatCount7d = Math.max(0, matches.filter((item) => item.id !== complaint.id).length);
+    return {
+      repeatCount7d,
+      isRepeatComplainant: repeatCount7d > 0,
+    };
+  }
+
+  private async getDuplicateContext(complaint: ComplaintRecord): Promise<{
+    duplicateOfComplaintId: string | null;
+    duplicateScore: number | null;
+  }> {
+    const lookbackStart = new Date(complaint.createdAt.getTime() - 14 * 24 * 60 * 60 * 1000);
+    const candidates = await complaintsRepository.findDuplicateCandidates({
+      complaintId: complaint.id,
+      customerContactNormalized: complaint.customerContactNormalized,
+      customerNameNormalized: complaint.customerNameNormalized,
+      content: complaint.content,
+      lookbackStart,
+      limit: 3,
+    });
+
+    const top = candidates[0];
+    if (!top) {
+      return {
+        duplicateOfComplaintId: null,
+        duplicateScore: null,
+      };
+    }
+
+    const sameContact =
+      complaint.customerContactNormalized &&
+      top.customerContactNormalized &&
+      complaint.customerContactNormalized === top.customerContactNormalized;
+    const sameName =
+      complaint.customerNameNormalized &&
+      top.customerNameNormalized &&
+      complaint.customerNameNormalized === top.customerNameNormalized;
+
+    const currentTokens = new Set(
+      complaint.content
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .map((token) => token.trim())
+        .filter((token) => token.length > 3),
+    );
+    const previousTokens = new Set(
+      top.content
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .map((token) => token.trim())
+        .filter((token) => token.length > 3),
+    );
+
+    const overlap = [...currentTokens].filter((token) => previousTokens.has(token)).length;
+    const denominator = Math.max(1, Math.min(currentTokens.size, previousTokens.size));
+    const lexicalScore = overlap / denominator;
+
+    const duplicateScore = Math.min(
+      1,
+      (sameContact ? 0.6 : 0) + (sameName ? 0.25 : 0) + Math.min(0.35, lexicalScore * 0.35),
+    );
+
+    if (duplicateScore < 0.65) {
+      return {
+        duplicateOfComplaintId: null,
+        duplicateScore: null,
+      };
+    }
+
+    return {
+      duplicateOfComplaintId: top.id,
+      duplicateScore,
+    };
   }
 
   async createComplaint(input: CreateComplaintInput, createdBy: string) {
@@ -87,7 +275,26 @@ class ComplaintsService {
       return this.getComplaintDetailsOrThrow(complaint.id);
     }
 
-    const dueDates = computeSlaDeadlines(triageResult.data.priority, complaint.createdAt);
+    const repeatContext = await this.getRepeatContext(complaint);
+    const initialDueDates = computeSlaDeadlines(triageResult.data.priority, complaint.createdAt);
+    const scoring = calculatePriorityScore({
+      sentiment: triageResult.data.sentiment,
+      sentimentScore: triageResult.data.sentiment_score,
+      keywords: triageResult.data.keywords,
+      repeatCount7d: repeatContext.repeatCount7d,
+      isRepeatComplainant: repeatContext.isRepeatComplainant,
+      createdAt: getPriorityScoreBaseDate(complaint),
+      dueAt: initialDueDates.firstResponseDueAt,
+    });
+
+    const triageData = {
+      ...triageResult.data,
+      priority: scoring.computedPriority,
+      priority_reason: `${triageResult.data.priority_reason}; ${scoring.reason}`,
+    };
+
+    const dueDates = computeSlaDeadlines(triageData.priority, complaint.createdAt);
+    const duplicateContext = await this.getDuplicateContext(complaint);
 
     await complaintsRepository.updateSlaFields(complaint.id, {
       firstResponseAt: null,
@@ -102,9 +309,13 @@ class ComplaintsService {
         firstResponseDueAt: dueDates.firstResponseDueAt,
         resolutionDueAt: dueDates.resolutionDueAt,
       },
-      triage: triageResult.data,
+      triage: triageData,
       triageResult,
       promptVersion: env.PROMPT_VERSION,
+      isRepeatComplainant: repeatContext.isRepeatComplainant,
+      repeatCount7d: repeatContext.repeatCount7d,
+      duplicateOfComplaintId: duplicateContext.duplicateOfComplaintId,
+      duplicateScore: duplicateContext.duplicateScore,
     });
 
     await complaintsRepository.insertStatusHistory({
@@ -119,8 +330,10 @@ class ComplaintsService {
       event: "complaint.triaged",
       payload: {
         complaintId: complaint.id,
-        category: triageResult.data.category,
-        priority: triageResult.data.priority,
+        category: triageData.category,
+        priority: triageData.priority,
+        sentiment: triageData.sentiment,
+        isRepeatComplainant: repeatContext.isRepeatComplainant,
       },
     });
 
@@ -170,7 +383,26 @@ class ComplaintsService {
       return this.getComplaintDetailsOrThrow(complaintId);
     }
 
-    const dueDates = computeSlaDeadlines(triageResult.data.priority, complaint.createdAt);
+    const repeatContext = await this.getRepeatContext(complaint);
+    const initialDueDates = computeSlaDeadlines(triageResult.data.priority, complaint.createdAt);
+    const scoring = calculatePriorityScore({
+      sentiment: triageResult.data.sentiment,
+      sentimentScore: triageResult.data.sentiment_score,
+      keywords: triageResult.data.keywords,
+      repeatCount7d: repeatContext.repeatCount7d,
+      isRepeatComplainant: repeatContext.isRepeatComplainant,
+      createdAt: getPriorityScoreBaseDate(complaint),
+      dueAt: initialDueDates.firstResponseDueAt,
+    });
+
+    const triageData = {
+      ...triageResult.data,
+      priority: scoring.computedPriority,
+      priority_reason: `${triageResult.data.priority_reason}; ${scoring.reason}`,
+    };
+
+    const dueDates = computeSlaDeadlines(triageData.priority, complaint.createdAt);
+    const duplicateContext = await this.getDuplicateContext(complaint);
 
     await complaintsRepository.updateSlaFields(complaint.id, {
       firstResponseAt: complaint.firstResponseAt,
@@ -185,9 +417,13 @@ class ComplaintsService {
         firstResponseDueAt: dueDates.firstResponseDueAt,
         resolutionDueAt: dueDates.resolutionDueAt,
       },
-      triage: triageResult.data,
+      triage: triageData,
       triageResult,
       promptVersion: env.PROMPT_VERSION,
+      isRepeatComplainant: repeatContext.isRepeatComplainant,
+      repeatCount7d: repeatContext.repeatCount7d,
+      duplicateOfComplaintId: duplicateContext.duplicateOfComplaintId,
+      duplicateScore: duplicateContext.duplicateScore,
     });
 
     await complaintsRepository.insertStatusHistory({
@@ -202,8 +438,10 @@ class ComplaintsService {
       event: "complaint.triaged",
       payload: {
         complaintId,
-        category: triageResult.data.category,
-        priority: triageResult.data.priority,
+        category: triageData.category,
+        priority: triageData.priority,
+        sentiment: triageData.sentiment,
+        isRepeatComplainant: repeatContext.isRepeatComplainant,
       },
     });
 
@@ -212,6 +450,48 @@ class ComplaintsService {
 
   async listComplaints(filters: ListComplaintsQueryInput) {
     return complaintsRepository.listComplaints(filters);
+  }
+
+  async getAgentSlaAlerts(agentName: string) {
+    const rows = await this.listComplaints({
+      page: 1,
+      pageSize: 200,
+      assignedTo: agentName,
+      triageStatus: "success",
+      duplicateOnly: undefined,
+      repeatOnly: undefined,
+    });
+
+    const activeItems = rows.items.filter((item) =>
+      ["Triaged", "InProgress", "WaitingCustomer"].includes(item.status),
+    );
+
+    const now = Date.now();
+    let breachedHigh = 0;
+    let atRiskHigh = 0;
+
+    for (const item of activeItems) {
+      if (item.priority !== "High") {
+        continue;
+      }
+
+      const due = item.firstResponseDueAt ?? item.resolutionDueAt;
+      if (!due) {
+        continue;
+      }
+
+      const remainingMinutes = (due.getTime() - now) / (1000 * 60);
+      if (remainingMinutes <= 0) {
+        breachedHigh += 1;
+      } else if (remainingMinutes <= 30) {
+        atRiskHigh += 1;
+      }
+    }
+
+    return {
+      breachedHigh,
+      atRiskHigh,
+    };
   }
 
   async getComplaintDetailsOrThrow(complaintId: string) {
@@ -283,6 +563,106 @@ class ComplaintsService {
         complaintId,
         fromStatus: complaint.status,
         toStatus: updated.status,
+      },
+    });
+
+    return this.getComplaintDetailsOrThrow(complaintId);
+  }
+
+  async recordAiFeedback(complaintId: string, input: ComplaintAiFeedbackInput) {
+    const updated = await complaintsRepository.saveAiFeedback(complaintId, input);
+    if (!updated) {
+      throw new NotFoundError("Complaint not found", { complaintId });
+    }
+
+    sseHub.broadcast({
+      event: "complaint.ai_feedback",
+      payload: {
+        complaintId,
+        helpful: input.helpful,
+      },
+    });
+
+    return this.getComplaintDetailsOrThrow(complaintId);
+  }
+
+  async reviewLowConfidenceComplaint(
+    complaintId: string,
+    input: ComplaintQaReviewInput,
+    reviewedBy: string,
+  ) {
+    const complaint = await complaintsRepository.getComplaintById(complaintId);
+    if (!complaint) {
+      throw new NotFoundError("Complaint not found", { complaintId });
+    }
+
+    const needsRetraining =
+      input.needsRetraining || (complaint.category !== null && complaint.category !== input.verifiedCategory);
+
+    const updated = await complaintsRepository.saveQaReview({
+      complaintId,
+      verifiedCategory: input.verifiedCategory,
+      reviewedBy,
+      needsRetraining,
+    });
+
+    if (!updated) {
+      throw new NotFoundError("Complaint not found", { complaintId });
+    }
+
+    await complaintsRepository.insertStatusHistory({
+      complaintId,
+      fromStatus: updated.status,
+      toStatus: updated.status,
+      changedBy: reviewedBy,
+      note: `QA verified category ${input.verifiedCategory}${needsRetraining ? " (flagged for retraining)" : ""}`,
+    });
+
+    sseHub.broadcast({
+      event: "complaint.qa_reviewed",
+      payload: {
+        complaintId,
+        verifiedCategory: input.verifiedCategory,
+        needsRetraining,
+      },
+    });
+
+    return this.getComplaintDetailsOrThrow(complaintId);
+  }
+
+  async overrideComplaint(complaintId: string, input: ComplaintOverrideInput, changedBy: string) {
+    const updated = await complaintsRepository.applyManagerOverride({
+      complaintId,
+      input,
+      changedBy,
+    });
+
+    if (!updated) {
+      throw new NotFoundError("Complaint not found", { complaintId });
+    }
+
+    const fieldsChanged: string[] = [];
+    if (input.category) {
+      fieldsChanged.push(`category=${input.category}`);
+    }
+    if (input.priority) {
+      fieldsChanged.push(`priority=${input.priority}`);
+    }
+
+    await complaintsRepository.insertStatusHistory({
+      complaintId,
+      fromStatus: updated.status,
+      toStatus: updated.status,
+      changedBy,
+      note: `Manager override (${fieldsChanged.join(", ")}): ${input.reason}`,
+    });
+
+    sseHub.broadcast({
+      event: "complaint.overridden",
+      payload: {
+        complaintId,
+        changedBy,
+        reason: input.reason,
       },
     });
 

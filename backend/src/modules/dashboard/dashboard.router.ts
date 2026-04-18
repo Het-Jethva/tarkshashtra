@@ -53,6 +53,36 @@ dashboardRouter.get(
   }),
 );
 
+dashboardRouter.get(
+  "/qa-trends",
+  requirePermission("dashboard:read"),
+  asyncHandler(async (_req, res) => {
+    const result = await dashboardService.getQaTrends();
+
+    const response: ApiSuccess<typeof result> = {
+      success: true,
+      data: result,
+    };
+
+    res.status(200).json(response);
+  }),
+);
+
+dashboardRouter.get(
+  "/manager-overview",
+  requirePermission("dashboard:read"),
+  asyncHandler(async (_req, res) => {
+    const result = await dashboardService.getManagerOverview();
+
+    const response: ApiSuccess<typeof result> = {
+      success: true,
+      data: result,
+    };
+
+    res.status(200).json(response);
+  }),
+);
+
 dashboardRouter.get("/stream", requirePermission("dashboard:stream"), (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
