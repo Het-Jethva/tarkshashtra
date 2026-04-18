@@ -155,6 +155,11 @@ function getPriorityScoreBaseDate(complaint: ComplaintRecord): Date {
 }
 
 class ComplaintsService {
+  private escapeCsvValue(value: string): string {
+    const escaped = value.replace(/"/g, '""');
+    return `"${escaped}"`;
+  }
+
   private normalizeDirectComplaintContent(input: CreateDirectCustomerComplaintInput): string {
     return (input.content ?? input.summary ?? input.complaint ?? "").trim();
   }
@@ -469,6 +474,7 @@ class ComplaintsService {
     const now = Date.now();
     let breachedHigh = 0;
     let atRiskHigh = 0;
+    const alerts: Array<{ complaintId: string; remainingMinutes: number; state: "breached" | "at_risk" }> = [];
 
     for (const item of activeItems) {
       if (item.priority !== "High") {
@@ -483,14 +489,27 @@ class ComplaintsService {
       const remainingMinutes = (due.getTime() - now) / (1000 * 60);
       if (remainingMinutes <= 0) {
         breachedHigh += 1;
+        alerts.push({
+          complaintId: item.id,
+          remainingMinutes,
+          state: "breached",
+        });
       } else if (remainingMinutes <= 30) {
         atRiskHigh += 1;
+        alerts.push({
+          complaintId: item.id,
+          remainingMinutes,
+          state: "at_risk",
+        });
       }
     }
+
+    alerts.sort((a, b) => a.remainingMinutes - b.remainingMinutes);
 
     return {
       breachedHigh,
       atRiskHigh,
+      alerts,
     };
   }
 
@@ -701,20 +720,28 @@ class ComplaintsService {
     }
   }
 
-  async getQueueStats() {
+  async getQueueStats(assignedTo?: string) {
+    const baseFilter = assignedTo ? eq(complaints.assignedTo, assignedTo) : undefined;
+
     const [openCount, triageFailedCount, highPriorityCount] = await Promise.all([
       db
         .select({ value: sql<number>`count(*)::int` })
         .from(complaints)
-        .where(and(eq(complaints.triageStatus, "success"), sql`${complaints.status} <> 'Closed'`)),
+        .where(
+          and(
+            eq(complaints.triageStatus, "success"),
+            sql`${complaints.status} <> 'Closed'`,
+            baseFilter,
+          ),
+        ),
       db
         .select({ value: sql<number>`count(*)::int` })
         .from(complaints)
-        .where(eq(complaints.status, "TriageFailed")),
+        .where(and(eq(complaints.status, "TriageFailed"), baseFilter)),
       db
         .select({ value: sql<number>`count(*)::int` })
         .from(complaints)
-        .where(and(eq(complaints.priority, "High"), sql`${complaints.status} <> 'Closed'`)),
+        .where(and(eq(complaints.priority, "High"), sql`${complaints.status} <> 'Closed'`, baseFilter)),
     ]);
 
     return {
@@ -722,6 +749,64 @@ class ComplaintsService {
       triageFailed: triageFailedCount[0]?.value ?? 0,
       highPriorityOpen: highPriorityCount[0]?.value ?? 0,
     };
+  }
+
+  async exportComplaintsCsv(filters: ListComplaintsQueryInput): Promise<string> {
+    const pageSize = Math.max(filters.pageSize, 2000);
+    const result = await this.listComplaints({
+      ...filters,
+      page: 1,
+      pageSize,
+    });
+
+    const headers = [
+      'complaint_id',
+      'date_submitted',
+      'agent_name',
+      'customer_name',
+      'source_channel',
+      'complaint_text',
+      'ai_category',
+      'confidence_percent',
+      'sentiment',
+      'priority',
+      'sla_status',
+      'status',
+    ];
+
+    const rows = [headers.join(',')];
+
+    for (const row of result.items) {
+      const slaStatus =
+        row.resolvedAt && row.resolutionDueAt
+          ? row.resolvedAt <= row.resolutionDueAt
+            ? 'Met'
+            : 'Breached'
+          : row.resolutionDueAt && row.resolutionDueAt < new Date()
+            ? 'Breached'
+            : 'Open';
+
+      rows.push(
+        [
+          row.id,
+          row.createdAt.toISOString(),
+          row.assignedTo ?? '',
+          row.customerName ?? '',
+          row.source,
+          row.content,
+          row.category ?? '',
+          row.confidence !== null && row.confidence !== undefined ? String(Math.round(row.confidence * 100)) : '',
+          row.sentiment ?? '',
+          row.priority ?? '',
+          slaStatus,
+          row.status,
+        ]
+          .map((value) => this.escapeCsvValue(value))
+          .join(','),
+      );
+    }
+
+    return rows.join('\n');
   }
 }
 

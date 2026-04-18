@@ -27,6 +27,7 @@ import {
 import type {
   ComplaintCategory,
   ComplaintPriority,
+  ComplaintSentiment,
   ComplaintStatus,
   SlaEventType,
   SlaMetric,
@@ -100,6 +101,38 @@ function buildListWhereClause(filters: ListComplaintsQueryInput): SQL<unknown> |
   }
   if (filters.triageStatus) {
     conditions.push(eq(complaints.triageStatus, filters.triageStatus));
+  }
+  if (filters.slaStatus === "breached") {
+    conditions.push(
+      sql`(
+        (${complaints.resolvedAt} is null and ${complaints.resolutionDueAt} is not null and ${complaints.resolutionDueAt} < now())
+        or
+        (${complaints.firstResponseAt} is null and ${complaints.firstResponseDueAt} is not null and ${complaints.firstResponseDueAt} < now())
+      )`,
+    );
+  }
+  if (filters.slaStatus === "at_risk") {
+    conditions.push(
+      sql`(
+        (${complaints.resolvedAt} is null and ${complaints.resolutionDueAt} is not null and ${complaints.resolutionDueAt} >= now() and ${complaints.resolutionDueAt} <= now() + interval '30 minutes')
+        or
+        (${complaints.firstResponseAt} is null and ${complaints.firstResponseDueAt} is not null and ${complaints.firstResponseDueAt} >= now() and ${complaints.firstResponseDueAt} <= now() + interval '30 minutes')
+      )`,
+    );
+  }
+  if (filters.slaStatus === "safe") {
+    conditions.push(
+      sql`(
+        (${complaints.resolvedAt} is null and ${complaints.resolutionDueAt} is not null and ${complaints.resolutionDueAt} > now() + interval '30 minutes')
+        or
+        (${complaints.firstResponseAt} is null and ${complaints.firstResponseDueAt} is not null and ${complaints.firstResponseDueAt} > now() + interval '30 minutes')
+      )`,
+    );
+  }
+  if (filters.slaStatus === "met") {
+    conditions.push(
+      sql`${complaints.resolvedAt} is not null and ${complaints.resolutionDueAt} is not null and ${complaints.resolvedAt} <= ${complaints.resolutionDueAt}`,
+    );
   }
   if (filters.search) {
     const searchPattern = `%${filters.search}%`;
@@ -640,6 +673,9 @@ class ComplaintsRepository {
     to?: Date;
     status?: ComplaintStatus;
     category?: ComplaintCategory;
+    priority?: ComplaintPriority;
+    sentiment?: ComplaintSentiment;
+    slaStatus?: "safe" | "at_risk" | "breached" | "met";
     assignedTo?: string;
   }): Promise<ComplaintRecord[]> {
     const conditions: SQL<unknown>[] = [];
@@ -656,8 +692,46 @@ class ComplaintsRepository {
     if (params.category) {
       conditions.push(eq(complaints.category, params.category));
     }
+    if (params.priority) {
+      conditions.push(eq(complaints.priority, params.priority));
+    }
+    if (params.sentiment) {
+      conditions.push(eq(complaints.sentiment, params.sentiment));
+    }
     if (params.assignedTo) {
       conditions.push(ilike(complaints.assignedTo, `%${params.assignedTo}%`));
+    }
+    if (params.slaStatus === "breached") {
+      conditions.push(
+        sql`(
+          (${complaints.resolvedAt} is null and ${complaints.resolutionDueAt} is not null and ${complaints.resolutionDueAt} < now())
+          or
+          (${complaints.firstResponseAt} is null and ${complaints.firstResponseDueAt} is not null and ${complaints.firstResponseDueAt} < now())
+        )`,
+      );
+    }
+    if (params.slaStatus === "at_risk") {
+      conditions.push(
+        sql`(
+          (${complaints.resolvedAt} is null and ${complaints.resolutionDueAt} is not null and ${complaints.resolutionDueAt} >= now() and ${complaints.resolutionDueAt} <= now() + interval '30 minutes')
+          or
+          (${complaints.firstResponseAt} is null and ${complaints.firstResponseDueAt} is not null and ${complaints.firstResponseDueAt} >= now() and ${complaints.firstResponseDueAt} <= now() + interval '30 minutes')
+        )`,
+      );
+    }
+    if (params.slaStatus === "safe") {
+      conditions.push(
+        sql`(
+          (${complaints.resolvedAt} is null and ${complaints.resolutionDueAt} is not null and ${complaints.resolutionDueAt} > now() + interval '30 minutes')
+          or
+          (${complaints.firstResponseAt} is null and ${complaints.firstResponseDueAt} is not null and ${complaints.firstResponseDueAt} > now() + interval '30 minutes')
+        )`,
+      );
+    }
+    if (params.slaStatus === "met") {
+      conditions.push(
+        sql`${complaints.resolvedAt} is not null and ${complaints.resolutionDueAt} is not null and ${complaints.resolvedAt} <= ${complaints.resolutionDueAt}`,
+      );
     }
 
     return db
@@ -690,6 +764,9 @@ class ComplaintsRepository {
     to?: Date;
     status?: ComplaintStatus;
     category?: ComplaintCategory;
+    priority?: ComplaintPriority;
+    sentiment?: ComplaintSentiment;
+    slaStatus?: "safe" | "at_risk" | "breached" | "met";
     assignedTo?: string;
   }): Promise<{
     total: number;
@@ -713,8 +790,46 @@ class ComplaintsRepository {
     if (params.category) {
       conditions.push(eq(complaints.category, params.category));
     }
+    if (params.priority) {
+      conditions.push(eq(complaints.priority, params.priority));
+    }
+    if (params.sentiment) {
+      conditions.push(eq(complaints.sentiment, params.sentiment));
+    }
     if (params.assignedTo) {
       conditions.push(ilike(complaints.assignedTo, `%${params.assignedTo}%`));
+    }
+    if (params.slaStatus === "breached") {
+      conditions.push(
+        sql`(
+          (${complaints.resolvedAt} is null and ${complaints.resolutionDueAt} is not null and ${complaints.resolutionDueAt} < now())
+          or
+          (${complaints.firstResponseAt} is null and ${complaints.firstResponseDueAt} is not null and ${complaints.firstResponseDueAt} < now())
+        )`,
+      );
+    }
+    if (params.slaStatus === "at_risk") {
+      conditions.push(
+        sql`(
+          (${complaints.resolvedAt} is null and ${complaints.resolutionDueAt} is not null and ${complaints.resolutionDueAt} >= now() and ${complaints.resolutionDueAt} <= now() + interval '30 minutes')
+          or
+          (${complaints.firstResponseAt} is null and ${complaints.firstResponseDueAt} is not null and ${complaints.firstResponseDueAt} >= now() and ${complaints.firstResponseDueAt} <= now() + interval '30 minutes')
+        )`,
+      );
+    }
+    if (params.slaStatus === "safe") {
+      conditions.push(
+        sql`(
+          (${complaints.resolvedAt} is null and ${complaints.resolutionDueAt} is not null and ${complaints.resolutionDueAt} > now() + interval '30 minutes')
+          or
+          (${complaints.firstResponseAt} is null and ${complaints.firstResponseDueAt} is not null and ${complaints.firstResponseDueAt} > now() + interval '30 minutes')
+        )`,
+      );
+    }
+    if (params.slaStatus === "met") {
+      conditions.push(
+        sql`${complaints.resolvedAt} is not null and ${complaints.resolutionDueAt} is not null and ${complaints.resolvedAt} <= ${complaints.resolutionDueAt}`,
+      );
     }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
@@ -767,6 +882,9 @@ class ComplaintsRepository {
     to?: Date;
     status?: ComplaintStatus;
     category?: ComplaintCategory;
+    priority?: ComplaintPriority;
+    sentiment?: ComplaintSentiment;
+    slaStatus?: "safe" | "at_risk" | "breached" | "met";
     assignedTo?: string;
   }): Promise<
     Array<{
@@ -792,8 +910,46 @@ class ComplaintsRepository {
     if (params.category) {
       conditions.push(eq(complaints.category, params.category));
     }
+    if (params.priority) {
+      conditions.push(eq(complaints.priority, params.priority));
+    }
+    if (params.sentiment) {
+      conditions.push(eq(complaints.sentiment, params.sentiment));
+    }
     if (params.assignedTo) {
       conditions.push(ilike(complaints.assignedTo, `%${params.assignedTo}%`));
+    }
+    if (params.slaStatus === "breached") {
+      conditions.push(
+        sql`(
+          (${complaints.resolvedAt} is null and ${complaints.resolutionDueAt} is not null and ${complaints.resolutionDueAt} < now())
+          or
+          (${complaints.firstResponseAt} is null and ${complaints.firstResponseDueAt} is not null and ${complaints.firstResponseDueAt} < now())
+        )`,
+      );
+    }
+    if (params.slaStatus === "at_risk") {
+      conditions.push(
+        sql`(
+          (${complaints.resolvedAt} is null and ${complaints.resolutionDueAt} is not null and ${complaints.resolutionDueAt} >= now() and ${complaints.resolutionDueAt} <= now() + interval '30 minutes')
+          or
+          (${complaints.firstResponseAt} is null and ${complaints.firstResponseDueAt} is not null and ${complaints.firstResponseDueAt} >= now() and ${complaints.firstResponseDueAt} <= now() + interval '30 minutes')
+        )`,
+      );
+    }
+    if (params.slaStatus === "safe") {
+      conditions.push(
+        sql`(
+          (${complaints.resolvedAt} is null and ${complaints.resolutionDueAt} is not null and ${complaints.resolutionDueAt} > now() + interval '30 minutes')
+          or
+          (${complaints.firstResponseAt} is null and ${complaints.firstResponseDueAt} is not null and ${complaints.firstResponseDueAt} > now() + interval '30 minutes')
+        )`,
+      );
+    }
+    if (params.slaStatus === "met") {
+      conditions.push(
+        sql`${complaints.resolvedAt} is not null and ${complaints.resolutionDueAt} is not null and ${complaints.resolvedAt} <= ${complaints.resolutionDueAt}`,
+      );
     }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;

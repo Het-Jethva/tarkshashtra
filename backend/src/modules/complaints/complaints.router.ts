@@ -1,7 +1,7 @@
 import { Router } from "express";
 
 import { asyncHandler, type ApiSuccess } from "../../lib/http.js";
-import { ValidationError } from "../../lib/errors.js";
+import { AppError, ValidationError } from "../../lib/errors.js";
 import { getActorFromRequest, requirePermission } from "../auth/rbac.js";
 import {
   complaintAiFeedbackSchema,
@@ -61,8 +61,11 @@ complaintsRouter.get(
   "/",
   requirePermission("complaints:read"),
   asyncHandler(async (req, res) => {
+    const actor = getActorFromRequest(req);
     const query = listComplaintsQuerySchema.parse(req.query);
-    const result = await complaintsService.listComplaints(query);
+    const scopedQuery =
+      actor.role === "support_executive" ? { ...query, assignedTo: actor.name } : query;
+    const result = await complaintsService.listComplaints(scopedQuery);
 
     const response: ApiSuccess<typeof result> = {
       success: true,
@@ -76,8 +79,11 @@ complaintsRouter.get(
 complaintsRouter.get(
   "/queue/stats",
   requirePermission("complaints:read"),
-  asyncHandler(async (_req, res) => {
-    const stats = await complaintsService.getQueueStats();
+  asyncHandler(async (req, res) => {
+    const actor = getActorFromRequest(req);
+    const stats = await complaintsService.getQueueStats(
+      actor.role === "support_executive" ? actor.name : undefined,
+    );
 
     const response: ApiSuccess<typeof stats> = {
       success: true,
@@ -89,12 +95,35 @@ complaintsRouter.get(
 );
 
 complaintsRouter.get(
+  "/export.csv",
+  requirePermission("complaints:read"),
+  asyncHandler(async (req, res) => {
+    const actor = getActorFromRequest(req);
+    const query = listComplaintsQuerySchema.parse(req.query);
+    const scopedQuery =
+      actor.role === "support_executive" ? { ...query, assignedTo: actor.name } : query;
+    const csv = await complaintsService.exportComplaintsCsv(scopedQuery);
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="complaints-${Date.now()}.csv"`);
+    res.status(200).send(csv);
+  }),
+);
+
+complaintsRouter.get(
   "/:id",
   requirePermission("complaints:read"),
   asyncHandler(async (req, res) => {
+    const actor = getActorFromRequest(req);
     const complaintId = normalizeComplaintId(req.params.id);
 
     const details = await complaintsService.getComplaintDetailsOrThrow(complaintId);
+
+    if (actor.role === "support_executive" && details.complaint.assignedTo !== actor.name) {
+      throw new AppError("You are not allowed to access this complaint", 403, "FORBIDDEN", {
+        complaintId,
+      });
+    }
 
     const response: ApiSuccess<typeof details> = {
       success: true,
@@ -146,6 +175,19 @@ complaintsRouter.get(
   requirePermission("complaints:read"),
   asyncHandler(async (req, res) => {
     const actor = getActorFromRequest(req);
+    if (actor.role !== "support_executive") {
+      const response: ApiSuccess<{ breachedHigh: number; atRiskHigh: number; alerts: [] }> = {
+        success: true,
+        data: {
+          breachedHigh: 0,
+          atRiskHigh: 0,
+          alerts: [],
+        },
+      };
+
+      res.status(200).json(response);
+      return;
+    }
     const alerts = await complaintsService.getAgentSlaAlerts(actor.name);
 
     const response: ApiSuccess<typeof alerts> = {

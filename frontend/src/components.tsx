@@ -1,18 +1,15 @@
 import React, { type InputHTMLAttributes, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
-import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
 
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
+import { cn } from './lib/utils';
 
 export const Button = React.forwardRef<HTMLButtonElement, React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'danger' | 'ghost' }>(
-  ({ className, variant = 'primary', ...props }, ref) => {
+  ({ className, type = 'button', variant = 'primary', ...props }, ref) => {
     return (
       <button
         ref={ref}
+        type={type}
         className={cn(
-          "inline-flex items-center justify-center rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 h-10 px-4 py-2 select-none shadow-sm active:scale-[0.98]",
+          "inline-flex items-center justify-center rounded-lg text-sm font-medium transition-[background-color,border-color,color,box-shadow,transform] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 h-10 px-4 py-2 select-none shadow-sm active:scale-[0.98]",
           variant === 'primary' && "bg-zinc-900 text-white hover:bg-zinc-800 shadow-[0_1px_2px_rgba(0,0,0,0.1)]",
           variant === 'secondary' && "bg-white text-zinc-900 hover:bg-zinc-50 border border-zinc-200/80 shadow-[0_1px_2px_rgba(0,0,0,0.05)]",
           variant === 'danger' && "bg-red-600 text-white hover:bg-red-700 shadow-[0_1px_2px_rgba(0,0,0,0.1)]",
@@ -32,7 +29,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputHTMLAttributes<HTML
       <input
         type={type}
         className={cn(
-          "flex h-10 w-full rounded-lg bg-white border border-zinc-200/80 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/10 focus-visible:border-zinc-900 disabled:cursor-not-allowed disabled:opacity-50 transition-shadow shadow-[0_1px_2px_rgba(0,0,0,0.02)]",
+          "flex h-10 w-full min-w-0 rounded-lg bg-white border border-zinc-200/80 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/10 focus-visible:border-zinc-900 disabled:cursor-not-allowed disabled:opacity-50 transition-[border-color,box-shadow] shadow-[0_1px_2px_rgba(0,0,0,0.02)]",
           className
         )}
         ref={ref}
@@ -48,7 +45,7 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaHTMLAttrib
     return (
       <textarea
         className={cn(
-          "flex min-h-[100px] w-full rounded-lg bg-white border border-zinc-200/80 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/10 focus-visible:border-zinc-900 disabled:cursor-not-allowed disabled:opacity-50 transition-shadow shadow-[0_1px_2px_rgba(0,0,0,0.02)] resize-y",
+          "flex min-h-[100px] w-full min-w-0 rounded-lg bg-white border border-zinc-200/80 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/10 focus-visible:border-zinc-900 disabled:cursor-not-allowed disabled:opacity-50 transition-[border-color,box-shadow] shadow-[0_1px_2px_rgba(0,0,0,0.02)] resize-y",
           className
         )}
         ref={ref}
@@ -64,7 +61,7 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectHTMLAttributes<H
     return (
       <select
         className={cn(
-          "flex h-10 w-full rounded-lg bg-white border border-zinc-200/80 px-3 py-2 text-sm text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/10 focus-visible:border-zinc-900 disabled:cursor-not-allowed disabled:opacity-50 shadow-[0_1px_2px_rgba(0,0,0,0.02)]",
+          "flex h-10 w-full min-w-0 rounded-lg bg-white border border-zinc-200/80 px-3 py-2 text-sm text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/10 focus-visible:border-zinc-900 disabled:cursor-not-allowed disabled:opacity-50 transition-[border-color,box-shadow] shadow-[0_1px_2px_rgba(0,0,0,0.02)]",
           className
         )}
         ref={ref}

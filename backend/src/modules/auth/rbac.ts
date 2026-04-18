@@ -35,7 +35,6 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "complaints:retry_triage",
     "dashboard:read",
     "dashboard:stream",
-    "reports:export",
   ],
   operations_manager: [
     "complaints:read",
@@ -53,9 +52,9 @@ const DEFAULT_DISPLAY_NAME: Record<UserRole, string> = {
 };
 
 const ROLE_LABELS: Record<UserRole, string> = {
-  support_executive: "Customer Support Executive",
-  quality_assurance: "Quality Assurance Team",
-  operations_manager: "Operations Manager",
+  support_executive: "Support Agent",
+  quality_assurance: "QA Analyst",
+  operations_manager: "Manager",
 };
 
 function normalizeRole(value: unknown): UserRole | null {

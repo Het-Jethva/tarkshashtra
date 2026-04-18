@@ -71,8 +71,9 @@ dashboardRouter.get(
 dashboardRouter.get(
   "/manager-overview",
   requirePermission("dashboard:read"),
-  asyncHandler(async (_req, res) => {
-    const result = await dashboardService.getManagerOverview();
+  asyncHandler(async (req, res) => {
+    const agentName = typeof req.query.agentName === "string" ? req.query.agentName : undefined;
+    const result = await dashboardService.getManagerOverview(agentName);
 
     const response: ApiSuccess<typeof result> = {
       success: true,

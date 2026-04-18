@@ -1,6 +1,6 @@
 import PDFDocument from "pdfkit";
 
-import type { ComplaintCategory, ComplaintStatus } from "../../db/types.js";
+import type { ComplaintCategory, ComplaintSentiment, ComplaintStatus, ComplaintPriority } from "../../db/types.js";
 import { complaintsRepository } from "../complaints/complaints.repository.js";
 
 type ReportFilters = {
@@ -8,6 +8,9 @@ type ReportFilters = {
   to?: Date;
   status?: ComplaintStatus;
   category?: ComplaintCategory;
+  priority?: ComplaintPriority;
+  sentiment?: ComplaintSentiment;
+  slaStatus?: "safe" | "at_risk" | "breached" | "met";
   agent?: string;
 };
 
@@ -23,9 +26,13 @@ class ReportsService {
       createdAt: string;
       assignedTo: string | null;
       customerName: string | null;
+      source: string;
+      content: string;
       category: string | null;
       priority: string | null;
       sentiment: string | null;
+      slaStatus: string;
+      resolutionTimeHours: number | null;
       status: string;
       confidencePercent: number | null;
     }>
@@ -35,6 +42,9 @@ class ReportsService {
       to: filters.to,
       status: filters.status,
       category: filters.category,
+      priority: filters.priority,
+      sentiment: filters.sentiment,
+      slaStatus: filters.slaStatus,
       assignedTo: filters.agent,
     });
 
@@ -43,9 +53,23 @@ class ReportsService {
       createdAt: row.createdAt.toISOString(),
       assignedTo: row.assignedTo,
       customerName: row.customerName,
+      source: row.source,
+      content: row.content,
       category: row.category,
       priority: row.priority,
       sentiment: row.sentiment,
+      slaStatus:
+        row.resolvedAt && row.resolutionDueAt
+          ? row.resolvedAt <= row.resolutionDueAt
+            ? "Met"
+            : "Breached"
+          : row.resolutionDueAt && row.resolutionDueAt < new Date()
+            ? "Breached"
+            : "Open",
+      resolutionTimeHours:
+        row.resolvedAt !== null
+          ? Number(((row.resolvedAt.getTime() - row.createdAt.getTime()) / (1000 * 60 * 60)).toFixed(2))
+          : null,
       status: row.status,
       confidencePercent:
         row.confidence === null || row.confidence === undefined ? null : Math.round(row.confidence * 100),
@@ -58,6 +82,9 @@ class ReportsService {
       to: filters.to,
       status: filters.status,
       category: filters.category,
+      priority: filters.priority,
+      sentiment: filters.sentiment,
+      slaStatus: filters.slaStatus,
       assignedTo: filters.agent,
     });
     const headers = [
@@ -139,6 +166,9 @@ class ReportsService {
       to: filters.to,
       status: filters.status,
       category: filters.category,
+      priority: filters.priority,
+      sentiment: filters.sentiment,
+      slaStatus: filters.slaStatus,
       assignedTo: filters.agent,
     });
     const summary = await complaintsRepository.getExportSummary({
@@ -146,6 +176,9 @@ class ReportsService {
       to: filters.to,
       status: filters.status,
       category: filters.category,
+      priority: filters.priority,
+      sentiment: filters.sentiment,
+      slaStatus: filters.slaStatus,
       assignedTo: filters.agent,
     });
     const agentPerformance = await complaintsRepository.getAgentPerformanceSummary({
@@ -153,6 +186,9 @@ class ReportsService {
       to: filters.to,
       status: filters.status,
       category: filters.category,
+      priority: filters.priority,
+      sentiment: filters.sentiment,
+      slaStatus: filters.slaStatus,
       assignedTo: filters.agent,
     });
 

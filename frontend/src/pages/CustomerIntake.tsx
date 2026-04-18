@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { toast } from 'sonner';
+
 import { api } from '../api';
 import { Button, Card, Input, Textarea } from '../components';
-import { toast } from 'sonner';
+import { getErrorMessage } from '../lib/errors';
 
 const schema = z.object({
   customerName: z.string().min(2, 'Name is required'),
@@ -28,8 +30,8 @@ export function CustomerIntake() {
       const res = await api.submitCustomerDirect(data);
       setSuccessId(res.id);
       toast.success('Information submitted successfully');
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to submit information');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Failed to submit information'));
     } finally {
       setIsSubmitting(false);
     }
@@ -69,45 +71,66 @@ export function CustomerIntake() {
         </div>
 
         <Card className="p-8 sm:p-10 shadow-lg border-zinc-200/80">
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+          <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-6">
             <div className="space-y-5">
               <div>
-                <label className="block text-sm font-medium text-zinc-900 mb-2">
+                <label htmlFor="customer-name" className="block text-sm font-medium text-zinc-900 mb-2">
                   Full Name
                 </label>
-                <Input {...register('customerName')} placeholder="Jane Doe" />
-                {errors.customerName && <p className="mt-1.5 text-xs text-red-500">{errors.customerName.message}</p>}
+                <Input
+                  id="customer-name"
+                  autoComplete="name"
+                  aria-invalid={Boolean(errors.customerName)}
+                  aria-describedby={errors.customerName ? 'customer-name-error' : undefined}
+                  {...register('customerName')}
+                  placeholder="Jane Doe"
+                />
+                {errors.customerName && <p id="customer-name-error" className="mt-1.5 text-xs text-red-500">{errors.customerName.message}</p>}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-zinc-900 mb-2">
+                <label htmlFor="customer-contact" className="block text-sm font-medium text-zinc-900 mb-2">
                   Email Address
                 </label>
-                <Input {...register('customerContact')} placeholder="jane@example.com" />
-                {errors.customerContact && <p className="mt-1.5 text-xs text-red-500">{errors.customerContact.message}</p>}
+                <Input
+                  id="customer-contact"
+                  type="email"
+                  inputMode="email"
+                  autoComplete="email"
+                  spellCheck={false}
+                  aria-invalid={Boolean(errors.customerContact)}
+                  aria-describedby={errors.customerContact ? 'customer-contact-error' : undefined}
+                  {...register('customerContact')}
+                  placeholder="jane@example.com"
+                />
+                {errors.customerContact && <p id="customer-contact-error" className="mt-1.5 text-xs text-red-500">{errors.customerContact.message}</p>}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-zinc-900 mb-2">
+                <label htmlFor="complaint-content" className="block text-sm font-medium text-zinc-900 mb-2">
                   Issue Description
                 </label>
                 <Textarea 
+                  id="complaint-content"
+                  autoComplete="off"
+                  aria-invalid={Boolean(errors.content)}
+                  aria-describedby={errors.content ? 'complaint-content-error' : undefined}
                   {...register('content')} 
                   rows={5} 
                   placeholder="How can we help?"
                 />
-                {errors.content && <p className="mt-1.5 text-xs text-red-500">{errors.content.message}</p>}
+                {errors.content && <p id="complaint-content-error" className="mt-1.5 text-xs text-red-500">{errors.content.message}</p>}
               </div>
             </div>
 
-            <Button type="submit" disabled={isSubmitting} className="w-full h-11 mt-8">
+            <Button type="submit" disabled={isSubmitting} aria-busy={isSubmitting} className="w-full h-11 mt-8">
               {isSubmitting ? (
                 <div className="flex items-center">
                   <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
-                  Submitting...
+                  Submitting…
                 </div>
               ) : 'Submit Report'}
             </Button>

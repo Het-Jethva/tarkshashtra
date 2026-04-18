@@ -130,6 +130,11 @@ export interface Complaint {
 export interface AgentAlertStats {
   breachedHigh: number;
   atRiskHigh: number;
+  alerts: Array<{
+    complaintId: string;
+    remainingMinutes: number;
+    state: 'breached' | 'at_risk';
+  }>;
 }
 
 export interface QueueStats {
@@ -222,9 +227,13 @@ export interface ReportPreviewRow {
   createdAt: string;
   assignedTo?: string;
   customerName?: string;
+   source?: Source;
+   content?: string;
   category?: string;
   priority?: string;
   sentiment?: string;
+   slaStatus?: string;
+   resolutionTimeHours?: number;
   status: string;
   confidencePercent?: number;
 }
@@ -233,7 +242,7 @@ export interface EventTimeline {
   id: string;
   complaintId: string;
   type: 'status_change' | 'triage_run' | 'sla_event';
-  details: any;
+  details: unknown;
   createdAt: string;
 }
 
@@ -251,6 +260,6 @@ export interface ApiResponse<T> {
   error?: {
     code: string;
     message: string;
-    details?: any;
+    details?: unknown;
   };
 }

@@ -400,7 +400,7 @@ class DashboardService {
     };
   }
 
-  async getManagerOverview(): Promise<{
+  async getManagerOverview(agentName?: string): Promise<{
     agentWorkload: Array<{
       agentName: string;
       openComplaints: number;
@@ -430,6 +430,9 @@ class DashboardService {
     twoWeeksAgo.setDate(now.getDate() - 13);
     twoWeeksAgo.setHours(0, 0, 0, 0);
 
+    const normalizedAgent = agentName?.trim();
+    const agentFilter = normalizedAgent ? eq(complaints.assignedTo, normalizedAgent) : undefined;
+
     const [agentRows, categoryRows, priorityRows, trendRows, kpiRows] = await Promise.all([
       db
         .select({
@@ -449,6 +452,7 @@ class DashboardService {
           assignedCount: sql<number>`count(*)::int`,
         })
         .from(complaints)
+        .where(agentFilter)
         .groupBy(sql`coalesce(${complaints.assignedTo}, 'Unassigned')`)
         .orderBy(sql`coalesce(${complaints.assignedTo}, 'Unassigned')`),
       db
@@ -458,6 +462,7 @@ class DashboardService {
           resolvedCount: sql<number>`count(*) filter (where ${complaints.status} in ('Resolved','Closed'))::int`,
         })
         .from(complaints)
+        .where(agentFilter)
         .groupBy(sql`coalesce(cast(${complaints.category} as text), 'Untriaged')`),
       db
         .select({
@@ -465,7 +470,7 @@ class DashboardService {
           count: sql<number>`count(*)::int`,
         })
         .from(complaints)
-        .where(sql`${complaints.status} in ('Triaged','InProgress','WaitingCustomer')`)
+        .where(and(sql`${complaints.status} in ('Triaged','InProgress','WaitingCustomer')`, agentFilter))
         .groupBy(sql`coalesce(cast(${complaints.priority} as text), 'Untriaged')`),
       db
         .select({
@@ -473,7 +478,7 @@ class DashboardService {
           avgResolutionHours: sql<number>`coalesce(avg(extract(epoch from (${complaints.resolvedAt} - ${complaints.createdAt})) / 3600) filter (where ${complaints.resolvedAt} is not null), 0)::float`,
         })
         .from(complaints)
-        .where(gte(complaints.createdAt, twoWeeksAgo))
+        .where(and(gte(complaints.createdAt, twoWeeksAgo), agentFilter))
         .groupBy(sql`to_char(${complaints.createdAt}, 'YYYY-MM-DD')`)
         .orderBy(sql`to_char(${complaints.createdAt}, 'YYYY-MM-DD')`),
       db
@@ -484,7 +489,8 @@ class DashboardService {
           avgResolutionHours: sql<number>`coalesce(avg(extract(epoch from (${complaints.resolvedAt} - ${complaints.createdAt})) / 3600) filter (where ${complaints.resolvedAt} is not null), 0)::float`,
           openHigh: sql<number>`count(*) filter (where ${complaints.priority} = 'High' and ${complaints.status} in ('Triaged','InProgress','WaitingCustomer'))::int`,
         })
-        .from(complaints),
+        .from(complaints)
+        .where(agentFilter),
     ]);
 
     const agentWorkload = agentRows.map((row) => {

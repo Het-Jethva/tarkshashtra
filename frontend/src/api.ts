@@ -147,6 +147,8 @@ type BackendPaginatedComplaints = {
   pageSize: number;
 };
 
+type QueryValue = string | number | boolean | null | undefined;
+
 function toComplaint(
   complaint: BackendComplaint,
   actions: BackendComplaintAction[] = [],
@@ -329,7 +331,7 @@ export const api = {
       ),
     ),
      
-  getComplaints: (params: Record<string, any> = {}) => {
+  getComplaints: (params: Record<string, QueryValue> = {}) => {
     const query = new URLSearchParams();
     for (const [key, value] of Object.entries(params)) {
       if (value !== undefined && value !== '') query.append(key, String(value));
@@ -440,11 +442,27 @@ export const api = {
   getSlaOverview: () => fetchApi<SlaOverview>('/dashboard/sla-overview'),
   getWorkload: () => fetchApi<WorkloadDistribution>('/dashboard/workload'),
   getQaTrends: () => fetchApi<QaTrends>('/dashboard/qa-trends'),
-  getManagerOverview: () => fetchApi<ManagerOverview>('/dashboard/manager-overview'),
+  getManagerOverview: (agentName?: string) => {
+    const query = new URLSearchParams();
+    if (agentName && agentName.trim().length > 0) {
+      query.set('agentName', agentName.trim());
+    }
+    return fetchApi<ManagerOverview>(`/dashboard/manager-overview${query.toString() ? `?${query.toString()}` : ''}`);
+  },
 
   getReportPreview: (params: Record<string, string> = {}) => {
     const query = new URLSearchParams(params).toString();
     return fetchApi<ReportPreviewRow[]>(`/reports/preview${query ? `?${query}` : ''}`);
+  },
+
+  exportBulkComplaintsUrl: (params: Record<string, string> = {}) => {
+    const query = new URLSearchParams({
+      ...params,
+      asRole: getStoredRole(),
+      asName: getStoredName(),
+    }).toString();
+
+    return `${API_BASE}/complaints/export.csv${query ? `?${query}` : ''}`;
   },
 
   dashboardStreamUrl: () => {

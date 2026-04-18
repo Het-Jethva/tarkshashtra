@@ -56,6 +56,7 @@ export const listComplaintsQuerySchema = z.object({
     .transform((value) => (value === undefined ? undefined : value === "true")),
   status: z.enum(complaintStatusEnum.enumValues).optional(),
   triageStatus: z.enum(triageStatusEnum.enumValues).optional(),
+  slaStatus: z.enum(["safe", "at_risk", "breached", "met"]).optional(),
   search: z.string().trim().min(2).max(150).optional(),
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
