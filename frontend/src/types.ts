@@ -9,6 +9,7 @@ export type Permission =
   | 'complaints:read'
   | 'complaints:update_status'
   | 'complaints:retry_triage'
+  | 'complaints:override'
   | 'dashboard:read'
   | 'dashboard:stream'
   | 'reports:export';

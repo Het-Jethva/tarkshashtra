@@ -9,6 +9,7 @@ const permissionValues = [
   "complaints:read",
   "complaints:update_status",
   "complaints:retry_triage",
+  "complaints:override",
   "dashboard:read",
   "dashboard:stream",
   "reports:export",
@@ -36,7 +37,13 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "dashboard:stream",
     "reports:export",
   ],
-  operations_manager: ["dashboard:read", "dashboard:stream", "reports:export"],
+  operations_manager: [
+    "complaints:read",
+    "complaints:override",
+    "dashboard:read",
+    "dashboard:stream",
+    "reports:export",
+  ],
 };
 
 const DEFAULT_DISPLAY_NAME: Record<UserRole, string> = {
