@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
 import { format } from 'date-fns';
-import { api } from '../api';
-import type { Complaint, Status } from '../types';
-import { Badge, Button, Card, Select, Textarea } from '../components';
 import { toast } from 'sonner';
+
+import { api } from '../api';
+import { Badge, Button, Card, Select, Textarea } from '../components';
+import { ConfidenceBar, PriorityBadge, SentimentBadge, SlaRing, sentimentEmoji } from '../complaint-ui';
+import type { Category, Complaint, Priority, Status } from '../types';
 
 const ALLOWED_TRANSITIONS: Record<Status, Status[]> = {
   New: ['Triaged', 'TriageFailed'],
@@ -26,209 +28,407 @@ export function ComplaintDetails({
   const { id } = useParams<{ id: string }>();
   const [complaint, setComplaint] = useState<Complaint | null>(null);
   const [loading, setLoading] = useState(true);
-  const [updateStatus, setUpdateStatus] = useState<Status | ''>('');
-  const [note, setNote] = useState('');
   const [isUpdating, setIsUpdating] = useState(false);
+  const [nextStatus, setNextStatus] = useState<Status | ''>('');
+  const [statusNote, setStatusNote] = useState('');
+  const [overrideCategory, setOverrideCategory] = useState<Category | ''>('');
+  const [overridePriority, setOverridePriority] = useState<Priority | ''>('');
+  const [overrideReason, setOverrideReason] = useState('');
 
   const fetchComplaint = async () => {
     try {
-      if (!id) return;
-      const res = await api.getComplaint(id);
-      setComplaint(res);
-      setUpdateStatus(res.status);
-    } catch (err: any) {
-      toast.error('Failed to load complaint');
+      if (!id) {
+        return;
+      }
+      const result = await api.getComplaint(id);
+      setComplaint(result);
+      setNextStatus(result.status);
+      setOverrideCategory(result.category ?? '');
+      setOverridePriority(result.priority ?? '');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to load complaint');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchComplaint();
+    void fetchComplaint();
   }, [id]);
 
-  const handleUpdate = async () => {
-    if (!id || !updateStatus) return;
+  const availableStatuses = useMemo(() => {
+    if (!complaint) {
+      return [];
+    }
+    return ALLOWED_TRANSITIONS[complaint.status];
+  }, [complaint]);
+
+  const handleStatusUpdate = async () => {
+    if (!id || !nextStatus || !complaint) {
+      return;
+    }
     try {
       setIsUpdating(true);
-      await api.updateStatus(id, { status: updateStatus as Status, note });
+      await api.updateStatus(id, {
+        status: nextStatus,
+        note: statusNote.trim() || undefined,
+      });
       toast.success('Status updated');
-      setNote('');
+      setStatusNote('');
       await fetchComplaint();
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to update status');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to update status');
     } finally {
       setIsUpdating(false);
     }
   };
 
-  const handleRetryTriage = async () => {
-    if (!id) return;
+  const handleRetry = async () => {
+    if (!id) {
+      return;
+    }
     try {
       setIsUpdating(true);
       await api.retryTriage(id);
-      toast.success('Triage queued');
+      toast.success('Triage retried');
       await fetchComplaint();
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to retry triage');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to retry triage');
     } finally {
       setIsUpdating(false);
     }
   };
 
-  if (loading) return <div className="p-8">Loading details...</div>;
-  if (!complaint) return <div className="p-8">Complaint not found.</div>;
+  const handleFeedback = async (helpful: boolean) => {
+    if (!id) {
+      return;
+    }
+    try {
+      setIsUpdating(true);
+      await api.submitAiFeedback(id, helpful);
+      toast.success('Feedback saved');
+      await fetchComplaint();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to save feedback');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
 
-  const availableStatuses = ALLOWED_TRANSITIONS[complaint.status];
+  const handleOverride = async () => {
+    if (!id) {
+      return;
+    }
+    if (!overrideReason.trim()) {
+      toast.error('Override reason is required');
+      return;
+    }
+
+    const categoryChanged = overrideCategory && overrideCategory !== complaint?.category;
+    const priorityChanged = overridePriority && overridePriority !== complaint?.priority;
+    if (!categoryChanged && !priorityChanged) {
+      toast.error('No override changes selected');
+      return;
+    }
+
+    try {
+      setIsUpdating(true);
+      await api.overrideComplaint(id, {
+        category: categoryChanged ? (overrideCategory as Category) : undefined,
+        priority: priorityChanged ? (overridePriority as Priority) : undefined,
+        reason: overrideReason,
+      });
+      toast.success('Override applied');
+      setOverrideReason('');
+      await fetchComplaint();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to override complaint');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleQaReview = async (needsRetraining: boolean) => {
+    if (!id || !overrideCategory) {
+      toast.error('Select a verified category first');
+      return;
+    }
+    try {
+      setIsUpdating(true);
+      await api.submitQaReview(id, {
+        verifiedCategory: overrideCategory as Category,
+        needsRetraining,
+      });
+      toast.success('QA review saved');
+      await fetchComplaint();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to save QA review');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="p-8">Loading details...</div>;
+  }
+
+  if (!complaint) {
+    return <div className="p-8">Complaint not found.</div>;
+  }
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
+    <div className="space-y-6 max-w-6xl mx-auto">
       <div className="flex justify-between items-start">
         <div>
           <Link to="/admin/complaints" className="text-sm font-medium text-zinc-500 hover:text-zinc-900 flex items-center mb-4">
-            &larr; Back to Queue
+            &larr; Back to Complaints
           </Link>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center space-x-3">
-            <span>Complaint</span>
-            <span className="font-mono text-xl text-zinc-500">#{complaint.id.split('-')[0]}</span>
-          </h1>
+          <h1 className="text-3xl font-bold tracking-tight">Complaint {complaint.id.slice(0, 10)}</h1>
           <p className="mt-1 text-sm text-zinc-600">
-            Created on {format(new Date(complaint.createdAt), 'PPpp')} via <span className="font-semibold">{complaint.source}</span>
+            Submitted on {format(new Date(complaint.createdAt), 'PPpp')} via {complaint.source}
           </p>
         </div>
-        <div className="flex flex-col items-end space-y-2">
-          <Badge variant={complaint.status === 'Resolved' || complaint.status === 'Closed' ? 'success' : complaint.status === 'TriageFailed' ? 'error' : 'default'} className="text-lg px-3 py-1">
+        <div className="flex flex-col items-end gap-2">
+          <Badge
+            variant={
+              complaint.status === 'Resolved' || complaint.status === 'Closed'
+                ? 'success'
+                : complaint.status === 'TriageFailed'
+                  ? 'error'
+                  : 'default'
+            }
+          >
             {complaint.status}
           </Badge>
-          <Badge variant={complaint.triageStatus === 'success' ? 'success' : complaint.triageStatus === 'failed' ? 'error' : 'warning'}>
-            Triage: {complaint.triageStatus}
-          </Badge>
+          <SlaRing complaint={complaint} />
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
-          <Card className="p-6 space-y-6">
+          <Card className="p-6 space-y-5">
             <div>
-              <h2 className="text-sm font-medium text-zinc-500 uppercase tracking-wider mb-2">Original Content</h2>
-              <div className="bg-zinc-50 p-4 rounded-sm font-mono text-sm border border-zinc-200 text-zinc-800 whitespace-pre-wrap">
+              <h2 className="text-sm font-medium text-zinc-500 uppercase tracking-wider mb-2">Complaint Text</h2>
+              <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-4 text-sm whitespace-pre-wrap text-zinc-800">
                 {complaint.content}
               </div>
             </div>
-            
-            {complaint.triageResult && (
-              <div className="border-t border-zinc-200 pt-6">
-                <h2 className="text-sm font-medium text-zinc-500 uppercase tracking-wider mb-4 flex items-center justify-between">
-                  AI Triage Analysis
-                  <span className="text-xs font-mono bg-zinc-100 px-2 py-1 rounded-full border border-zinc-200">
-                    Confidence: {(complaint.triageResult.confidence * 100).toFixed(0)}%
-                  </span>
-                </h2>
-                
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                  <div className="bg-zinc-50 p-3 rounded-sm border border-zinc-200">
-                    <span className="block text-xs font-medium text-zinc-500 mb-1">Category</span>
-                    <span className="font-semibold">{complaint.triageResult.category}</span>
-                  </div>
-                  <div className="bg-zinc-50 p-3 rounded-sm border border-zinc-200">
-                    <span className="block text-xs font-medium text-zinc-500 mb-1">Priority</span>
-                    <span className={`font-semibold ${complaint.triageResult.priority === 'High' ? 'text-red-600' : complaint.triageResult.priority === 'Medium' ? 'text-amber-600' : 'text-blue-600'}`}>
-                      {complaint.triageResult.priority}
-                    </span>
-                  </div>
-                </div>
 
-                <div className="mb-4">
-                  <span className="block text-xs font-medium text-zinc-500 mb-2">Reasoning</span>
-                  <p className="text-sm text-zinc-800 leading-relaxed bg-zinc-50 p-3 rounded-sm border border-zinc-200">
-                    {complaint.triageResult.reasoning}
-                  </p>
-                </div>
-
-                {complaint.triageResult.recommendedActions && complaint.triageResult.recommendedActions.length > 0 && (
-                  <div>
-                    <span className="block text-xs font-medium text-zinc-500 mb-2">Recommended Actions</span>
-                    <ul className="list-disc pl-5 space-y-1 text-sm text-zinc-800 bg-zinc-50 p-3 rounded-sm border border-zinc-200">
-                      {complaint.triageResult.recommendedActions.map((action, i) => (
-                        <li key={i}>{action}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="rounded-lg border border-zinc-200 p-4">
+                <div className="text-xs text-zinc-500 mb-1">Category</div>
+                <div className="font-semibold text-zinc-900">{complaint.category ?? 'Untriaged'}</div>
               </div>
-            )}
-
-            {complaint.triageStatus === 'failed' && (
-              <div className="border-t border-zinc-200 pt-6">
-                <div className="bg-red-50 text-red-800 p-4 border border-red-200 rounded-sm flex items-center justify-between">
-                  <div>
-                    <h3 className="font-bold">Triage Failed</h3>
-                    <p className="text-sm">The AI system was unable to automatically categorize this complaint.</p>
-                  </div>
-                  {canRetryTriage ? (
-                    <Button onClick={handleRetryTriage} variant="danger" disabled={isUpdating}>
-                      Retry Triage
-                    </Button>
-                  ) : null}
+              <div className="rounded-lg border border-zinc-200 p-4">
+                <div className="text-xs text-zinc-500 mb-1">Priority</div>
+                <PriorityBadge priority={complaint.priority} />
+              </div>
+              <div className="rounded-lg border border-zinc-200 p-4">
+                <div className="text-xs text-zinc-500 mb-1">Sentiment</div>
+                <div className="flex items-center gap-2">
+                  <SentimentBadge sentiment={complaint.sentiment} score={complaint.sentimentScore} />
+                  <span className="text-xs text-zinc-500">Tone {sentimentEmoji(complaint.sentiment)}</span>
                 </div>
               </div>
-            )}
+              <div className="rounded-lg border border-zinc-200 p-4">
+                <div className="text-xs text-zinc-500 mb-1">Confidence</div>
+                <ConfidenceBar confidence={complaint.confidence} />
+              </div>
+            </div>
+
+            {complaint.priorityReason ? (
+              <div className="rounded-lg border border-zinc-200 p-4">
+                <div className="text-xs text-zinc-500 mb-1">Priority Reason</div>
+                <div className="text-sm text-zinc-800">{complaint.priorityReason}</div>
+              </div>
+            ) : null}
+
+            {complaint.duplicateOfComplaintId ? (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                Duplicate detected: linked to {complaint.duplicateOfComplaintId} (score{' '}
+                {typeof complaint.duplicateScore === 'number' ? complaint.duplicateScore.toFixed(2) : 'n/a'}).
+              </div>
+            ) : null}
+
+            {complaint.isRepeatComplainant ? (
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+                Repeat complainant flag active ({complaint.repeatCount7d} complaints in 7 days).
+              </div>
+            ) : null}
+
+            <div className="rounded-lg border border-zinc-200 p-4">
+              <div className="text-xs text-zinc-500 mb-2">AI Recommended Steps</div>
+              {complaint.actions.length > 0 ? (
+                <ul className="space-y-2">
+                  {complaint.actions.map((action) => (
+                    <li key={action.id} className="text-sm text-zinc-800 flex items-start gap-2">
+                      <input type="checkbox" checked={action.actionStatus === 'Done'} readOnly className="mt-0.5" />
+                      <div>
+                        <div>{action.action}</div>
+                        <div className="text-xs text-zinc-500">
+                          Owner: {action.owner} | Due: {format(new Date(action.dueAt), 'PPp')}
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="text-sm text-zinc-500">No AI checklist available.</div>
+              )}
+            </div>
+
+            {complaint.triageStatus === 'failed' && canRetryTriage ? (
+              <Button onClick={handleRetry} variant="danger" disabled={isUpdating}>
+                Retry Triage
+              </Button>
+            ) : null}
+          </Card>
+
+          <Card className="p-6">
+            <h2 className="text-sm font-medium text-zinc-500 uppercase tracking-wider mb-3">Timeline</h2>
+            <div className="space-y-3">
+              {complaint.history.length > 0 ? (
+                complaint.history.map((item) => (
+                  <div key={item.id} className="rounded-md border border-zinc-200 p-3 text-sm">
+                    <div className="font-medium text-zinc-900">{item.toStatus}</div>
+                    <div className="text-zinc-600 text-xs">
+                      {format(new Date(item.createdAt), 'PPp')} by {item.changedBy}
+                    </div>
+                    {item.note ? <div className="text-zinc-700 mt-1">{item.note}</div> : null}
+                  </div>
+                ))
+              ) : (
+                <div className="text-sm text-zinc-500">No timeline events.</div>
+              )}
+            </div>
           </Card>
         </div>
 
         <div className="space-y-6">
-          <Card className="p-6">
-            <h2 className="text-sm font-medium text-zinc-500 uppercase tracking-wider mb-4">Customer Details</h2>
-            <div className="space-y-3 text-sm">
-              <div>
-                <span className="block text-zinc-500">Name</span>
-                <span className="font-semibold text-zinc-900">{complaint.customerName || 'N/A'}</span>
+          <Card className="p-6 space-y-4">
+            <h2 className="text-sm font-medium text-zinc-500 uppercase tracking-wider">Update Status</h2>
+            {!canUpdateStatus ? (
+              <div className="text-sm text-zinc-500">Read-only for this role.</div>
+            ) : (
+              <>
+                <Select value={nextStatus} onChange={(event) => setNextStatus(event.target.value as Status)}>
+                  <option value={complaint.status} disabled>
+                    {complaint.status} (current)
+                  </option>
+                  {availableStatuses.map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </Select>
+                <Textarea
+                  value={statusNote}
+                  onChange={(event) => setStatusNote(event.target.value)}
+                  rows={3}
+                  placeholder="Action note"
+                />
+                <Button
+                  disabled={isUpdating || nextStatus === complaint.status}
+                  onClick={handleStatusUpdate}
+                  className="w-full"
+                >
+                  Save Status
+                </Button>
+              </>
+            )}
+          </Card>
+
+          <Card className="p-6 space-y-4">
+            <h2 className="text-sm font-medium text-zinc-500 uppercase tracking-wider">AI Feedback</h2>
+            <div className="text-xs text-zinc-500">Was AI recommendation helpful?</div>
+            <div className="grid grid-cols-2 gap-2">
+              <Button variant="secondary" onClick={() => handleFeedback(true)} disabled={isUpdating}>
+                Thumbs Up
+              </Button>
+              <Button variant="secondary" onClick={() => handleFeedback(false)} disabled={isUpdating}>
+                Thumbs Down
+              </Button>
+            </div>
+            {typeof complaint.aiHelpful === 'boolean' ? (
+              <div className="text-xs text-zinc-600">
+                Last feedback: {complaint.aiHelpful ? 'Helpful' : 'Not Helpful'}
               </div>
-              <div>
-                <span className="block text-zinc-500">Contact</span>
-                <span className="font-semibold text-zinc-900">{complaint.customerContact || 'N/A'}</span>
-              </div>
+            ) : null}
+          </Card>
+
+          <Card className="p-6 space-y-4">
+            <h2 className="text-sm font-medium text-zinc-500 uppercase tracking-wider">QA Verification</h2>
+            <Select
+              value={overrideCategory}
+              onChange={(event) => setOverrideCategory(event.target.value as Category)}
+            >
+              <option value="">Select verified category</option>
+              <option value="Product">Product</option>
+              <option value="Packaging">Packaging</option>
+              <option value="Trade">Trade</option>
+            </Select>
+            <div className="grid grid-cols-1 gap-2">
+              <Button variant="secondary" onClick={() => handleQaReview(false)} disabled={isUpdating}>
+                Verify Category
+              </Button>
+              <Button variant="secondary" onClick={() => handleQaReview(true)} disabled={isUpdating}>
+                Verify + Flag Retraining
+              </Button>
             </div>
           </Card>
 
-          <Card className="p-6">
-            <h2 className="text-sm font-medium text-zinc-500 uppercase tracking-wider mb-4">Update Status</h2>
-            {!canUpdateStatus ? (
-              <div className="text-sm text-zinc-500 bg-zinc-50 p-3 rounded-sm border border-zinc-200 text-center">
-                Your role has read-only access for complaint details.
-              </div>
-            ) : availableStatuses.length > 0 ? (
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-xs font-medium text-zinc-700 mb-1">New Status</label>
-                  <Select value={updateStatus} onChange={(e) => setUpdateStatus(e.target.value as Status)}>
-                    <option value={complaint.status} disabled>{complaint.status} (Current)</option>
-                    {availableStatuses.map(s => <option key={s} value={s}>{s}</option>)}
-                  </Select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-zinc-700 mb-1">Internal Note (Optional)</label>
-                  <Textarea
-                    rows={3}
-                    value={note}
-                    onChange={e => setNote(e.target.value)}
-                    placeholder="Action taken..."
-                  />
-                </div>
-                <Button
-                  className="w-full"
-                  onClick={handleUpdate}
-                  disabled={isUpdating || updateStatus === complaint.status}
-                >
-                  {isUpdating ? 'Updating...' : 'Save Update'}
-                </Button>
-              </div>
-            ) : (
-              <div className="text-sm text-zinc-500 bg-zinc-50 p-3 rounded-sm border border-zinc-200 text-center">
-                No further status transitions available.
-              </div>
-            )}
+          <Card className="p-6 space-y-4">
+            <h2 className="text-sm font-medium text-zinc-500 uppercase tracking-wider">Manager Override</h2>
+            <Select
+              value={overrideCategory}
+              onChange={(event) => setOverrideCategory(event.target.value as Category)}
+            >
+              <option value="">Keep category</option>
+              <option value="Product">Product</option>
+              <option value="Packaging">Packaging</option>
+              <option value="Trade">Trade</option>
+            </Select>
+            <Select
+              value={overridePriority}
+              onChange={(event) => setOverridePriority(event.target.value as Priority)}
+            >
+              <option value="">Keep priority</option>
+              <option value="High">High</option>
+              <option value="Medium">Medium</option>
+              <option value="Low">Low</option>
+            </Select>
+            <Textarea
+              value={overrideReason}
+              onChange={(event) => setOverrideReason(event.target.value)}
+              rows={3}
+              placeholder="Override reason (required)"
+            />
+            <Button onClick={handleOverride} disabled={isUpdating} className="w-full">
+              Apply Override
+            </Button>
+            {complaint.managerOverridden ? (
+              <div className="text-xs text-zinc-600">Latest override reason: {complaint.managerOverrideReason}</div>
+            ) : null}
           </Card>
+
+          {complaint.overrides.length > 0 ? (
+            <Card className="p-6">
+              <h2 className="text-sm font-medium text-zinc-500 uppercase tracking-wider mb-3">Override Audit Trail</h2>
+              <div className="space-y-2">
+                {complaint.overrides.map((item) => (
+                  <div key={item.id} className="rounded-md border border-zinc-200 p-2 text-xs text-zinc-700">
+                    <div className="font-semibold">
+                      {item.field}: {item.fromValue ?? 'None'} -&gt; {item.toValue}
+                    </div>
+                    <div>
+                      {format(new Date(item.createdAt), 'PPp')} by {item.changedBy}
+                    </div>
+                    <div>{item.reason}</div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          ) : null}
         </div>
       </div>
     </div>

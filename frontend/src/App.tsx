@@ -11,6 +11,8 @@ import { ExecutiveIntake } from './pages/ExecutiveIntake';
 import { Dashboard } from './pages/Dashboard';
 import { ComplaintQueue } from './pages/ComplaintQueue';
 import { ComplaintDetails } from './pages/ComplaintDetails';
+import { QaDashboard } from './pages/QaDashboard';
+import { ReportsPage } from './pages/ReportsPage';
 import { LayoutDashboard, Inbox, FilePlus2, Megaphone } from 'lucide-react';
 
 function getDefaultAdminRoute(user: CurrentUser): string {
@@ -88,6 +90,18 @@ function AdminLayout({
           href: '/admin/dashboard',
           icon: LayoutDashboard,
           permission: 'dashboard:read' as const,
+        },
+        {
+          name: 'QA Trends',
+          href: '/admin/qa-trends',
+          icon: LayoutDashboard,
+          permission: 'dashboard:read' as const,
+        },
+        {
+          name: 'Reports',
+          href: '/admin/reports',
+          icon: LayoutDashboard,
+          permission: 'reports:export' as const,
         },
         {
           name: 'Complaints',
@@ -246,6 +260,22 @@ export default function App() {
                   canStream={hasPermission(user, 'dashboard:stream')}
                   streamUrl={api.dashboardStreamUrl()}
                 />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="qa-trends"
+            element={
+              <RequirePermission user={user} permission="dashboard:read">
+                <QaDashboard />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="reports"
+            element={
+              <RequirePermission user={user} permission="reports:export">
+                <ReportsPage />
               </RequirePermission>
             }
           />
