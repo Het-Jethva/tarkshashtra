@@ -164,6 +164,11 @@ class ComplaintsService {
     return (input.content ?? input.summary ?? input.complaint ?? "").trim();
   }
 
+  private async pickAssignee(createdBy: string): Promise<string> {
+    const leastLoadedAgent = await complaintsRepository.getLeastLoadedActiveAgent();
+    return leastLoadedAgent ?? createdBy;
+  }
+
   private async getRepeatContext(complaint: ComplaintRecord): Promise<{
     isRepeatComplainant: boolean;
     repeatCount7d: number;
@@ -251,7 +256,8 @@ class ComplaintsService {
   }
 
   async createComplaint(input: CreateComplaintInput, createdBy: string) {
-    const complaint = await complaintsRepository.createComplaint(input, createdBy);
+    const assignedTo = await this.pickAssignee(createdBy);
+    const complaint = await complaintsRepository.createComplaint(input, assignedTo, createdBy);
 
     const triageResult = await triageService.triageComplaint(complaint.content);
     if (!triageResult.ok) {
@@ -338,6 +344,7 @@ class ComplaintsService {
         category: triageData.category,
         priority: triageData.priority,
         sentiment: triageData.sentiment,
+        assignedTo,
         isRepeatComplainant: repeatContext.isRepeatComplainant,
       },
     });

@@ -441,13 +441,17 @@ class DashboardService {
           highPriorityCount: sql<number>`count(*) filter (where ${complaints.priority} = 'High' and ${complaints.status} <> 'Closed')::int`,
           slaBreachedCount: sql<number>`count(*) filter (
             where (
-              (${complaints.firstResponseAt} is null and ${complaints.firstResponseDueAt} is not null and ${complaints.firstResponseDueAt} < now())
+              (${complaints.firstResponseDueAt} is not null and ${complaints.firstResponseAt} is null and ${complaints.firstResponseDueAt} < now())
               or
-              (${complaints.resolvedAt} is null and ${complaints.resolutionDueAt} is not null and ${complaints.resolutionDueAt} < now())
+              (${complaints.firstResponseDueAt} is not null and ${complaints.firstResponseAt} is not null and ${complaints.firstResponseAt} > ${complaints.firstResponseDueAt})
+              or
+              (${complaints.resolutionDueAt} is not null and ${complaints.resolvedAt} is null and ${complaints.resolutionDueAt} < now())
+              or
+              (${complaints.resolutionDueAt} is not null and ${complaints.resolvedAt} is not null and ${complaints.resolvedAt} > ${complaints.resolutionDueAt})
             )
           )::int`,
           avgResolutionHours: sql<number>`coalesce(avg(extract(epoch from (${complaints.resolvedAt} - ${complaints.createdAt})) / 3600) filter (where ${complaints.resolvedAt} is not null), 0)::float`,
-          slaMetCount: sql<number>`count(*) filter (where ${complaints.resolvedAt} is not null and ${complaints.resolutionDueAt} is not null and ${complaints.resolvedAt} <= ${complaints.resolutionDueAt})::int`,
+          slaApplicableCount: sql<number>`count(*) filter (where ${complaints.firstResponseDueAt} is not null or ${complaints.resolutionDueAt} is not null)::int`,
           resolvedCount: sql<number>`count(*) filter (where ${complaints.status} in ('Resolved','Closed'))::int`,
           assignedCount: sql<number>`count(*)::int`,
         })
@@ -484,8 +488,20 @@ class DashboardService {
       db
         .select({
           totalToday: sql<number>`count(*) filter (where ${complaints.createdAt} >= ${todayStart})::int`,
-          slaCompliant: sql<number>`count(*) filter (where ${complaints.resolvedAt} is not null and ${complaints.resolutionDueAt} is not null and ${complaints.resolvedAt} <= ${complaints.resolutionDueAt})::int`,
-          resolvedTotal: sql<number>`count(*) filter (where ${complaints.resolvedAt} is not null)::int`,
+          slaBreached: sql<number>`count(*) filter (
+            where (
+              (${complaints.firstResponseDueAt} is not null and ${complaints.firstResponseAt} is null and ${complaints.firstResponseDueAt} < now())
+              or
+              (${complaints.firstResponseDueAt} is not null and ${complaints.firstResponseAt} is not null and ${complaints.firstResponseAt} > ${complaints.firstResponseDueAt})
+              or
+              (${complaints.resolutionDueAt} is not null and ${complaints.resolvedAt} is null and ${complaints.resolutionDueAt} < now())
+              or
+              (${complaints.resolutionDueAt} is not null and ${complaints.resolvedAt} is not null and ${complaints.resolvedAt} > ${complaints.resolutionDueAt})
+            )
+          )::int`,
+          slaEvaluated: sql<number>`count(*) filter (
+            where ${complaints.firstResponseDueAt} is not null or ${complaints.resolutionDueAt} is not null
+          )::int`,
           avgResolutionHours: sql<number>`coalesce(avg(extract(epoch from (${complaints.resolvedAt} - ${complaints.createdAt})) / 3600) filter (where ${complaints.resolvedAt} is not null), 0)::float`,
           openHigh: sql<number>`count(*) filter (where ${complaints.priority} = 'High' and ${complaints.status} in ('Triaged','InProgress','WaitingCustomer'))::int`,
         })
@@ -494,7 +510,10 @@ class DashboardService {
     ]);
 
     const agentWorkload = agentRows.map((row) => {
-      const slaMetPercent = row.assignedCount > 0 ? Math.round((row.slaMetCount / row.assignedCount) * 100) : 0;
+      const slaMetPercent =
+        row.slaApplicableCount > 0
+          ? Math.max(0, Math.round(((row.slaApplicableCount - row.slaBreachedCount) / row.slaApplicableCount) * 100))
+          : 0;
       const completionRatio = row.assignedCount > 0 ? row.resolvedCount / row.assignedCount : 0;
       const normalizedSpeed = row.avgResolutionHours > 0 ? Math.max(0, 1 - row.avgResolutionHours / 72) : 1;
       const breachPenalty = row.slaBreachedCount > 0 ? Math.min(25, row.slaBreachedCount * 5) : 0;
@@ -540,8 +559,8 @@ class DashboardService {
       kpis: {
         totalComplaintsToday: summary?.totalToday ?? 0,
         slaCompliancePercent:
-          summary && summary.resolvedTotal > 0
-            ? Math.round((summary.slaCompliant / summary.resolvedTotal) * 100)
+          summary && summary.slaEvaluated > 0
+            ? Math.max(0, Math.round(((summary.slaEvaluated - summary.slaBreached) / summary.slaEvaluated) * 100))
             : 0,
         avgResolutionTimeHours: Number((summary?.avgResolutionHours ?? 0).toFixed(2)),
         openHighPriorityNow: summary?.openHigh ?? 0,

@@ -22,6 +22,7 @@ import {
   complaints,
   slaEvents,
   statusHistory,
+  supportAgents,
   triageRuns,
 } from "../../db/schema.js";
 import type {
@@ -256,7 +257,7 @@ class ComplaintsRepository {
       .limit(params.limit);
   }
 
-  async createComplaint(input: CreateComplaintInput, createdBy: string): Promise<ComplaintRecord> {
+  async createComplaint(input: CreateComplaintInput, assignedTo: string, createdBy: string): Promise<ComplaintRecord> {
     const now = new Date();
     const customerNameNormalized = this.normalizePersonName(input.customerName ?? null);
     const customerContactNormalized = this.normalizeCustomerContact(input.customerContact ?? null);
@@ -265,7 +266,7 @@ class ComplaintsRepository {
       .values({
         id: createId("cmp"),
         source: input.source,
-        assignedTo: createdBy,
+        assignedTo,
         customerName: input.customerName ?? null,
         customerNameNormalized,
         customerContact: input.customerContact ?? null,
@@ -291,6 +292,36 @@ class ComplaintsRepository {
     });
 
     return created;
+  }
+
+  async listActiveSupportAgents(): Promise<Array<{ id: string; name: string }>> {
+    return db
+      .select({
+        id: supportAgents.id,
+        name: supportAgents.name,
+      })
+      .from(supportAgents)
+      .where(eq(supportAgents.isActive, true))
+      .orderBy(asc(supportAgents.name));
+  }
+
+  async getLeastLoadedActiveAgent(): Promise<string | null> {
+    const [row] = await db
+      .select({
+        name: supportAgents.name,
+        activeOpenCount: sql<number>`coalesce(count(${complaints.id}) filter (where ${complaints.status} in ('New','Triaged','InProgress','WaitingCustomer','TriageFailed')), 0)::int`,
+      })
+      .from(supportAgents)
+      .leftJoin(complaints, eq(complaints.assignedTo, supportAgents.name))
+      .where(eq(supportAgents.isActive, true))
+      .groupBy(supportAgents.id, supportAgents.name)
+      .orderBy(
+        sql<number>`coalesce(count(${complaints.id}) filter (where ${complaints.status} in ('New','Triaged','InProgress','WaitingCustomer','TriageFailed')), 0)::int`,
+        asc(supportAgents.name),
+      )
+      .limit(1);
+
+    return row?.name ?? null;
   }
 
   async getComplaintById(complaintId: string): Promise<ComplaintRecord | undefined> {

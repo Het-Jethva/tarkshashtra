@@ -117,6 +117,21 @@ export const complaints = pgTable(
   }),
 );
 
+export const supportAgents = pgTable(
+  "support_agents",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (table) => ({
+    nameUniqueIdx: uniqueIndex("support_agents_name_unique_idx").on(table.name),
+    isActiveIdx: index("support_agents_is_active_idx").on(table.isActive),
+  }),
+);
+
 export const complaintOverrides = pgTable(
   "complaint_overrides",
   {
