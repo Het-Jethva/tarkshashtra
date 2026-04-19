@@ -474,13 +474,13 @@ class DashboardService {
         .groupBy(sql`coalesce(cast(${complaints.priority} as text), 'Untriaged')`),
       db
         .select({
-          date: sql<string>`to_char(${complaints.createdAt}, 'YYYY-MM-DD')`,
-          avgResolutionHours: sql<number>`coalesce(avg(extract(epoch from (${complaints.resolvedAt} - ${complaints.createdAt})) / 3600) filter (where ${complaints.resolvedAt} is not null), 0)::float`,
+          date: sql<string>`to_char(${complaints.resolvedAt}, 'YYYY-MM-DD')`,
+          avgResolutionHours: sql<number>`avg(extract(epoch from (${complaints.resolvedAt} - ${complaints.createdAt})) / 3600)::float`,
         })
         .from(complaints)
-        .where(and(gte(complaints.createdAt, twoWeeksAgo), agentFilter))
-        .groupBy(sql`to_char(${complaints.createdAt}, 'YYYY-MM-DD')`)
-        .orderBy(sql`to_char(${complaints.createdAt}, 'YYYY-MM-DD')`),
+        .where(and(sql`${complaints.resolvedAt} is not null`, gte(complaints.resolvedAt, twoWeeksAgo), agentFilter))
+        .groupBy(sql`to_char(${complaints.resolvedAt}, 'YYYY-MM-DD')`)
+        .orderBy(sql`to_char(${complaints.resolvedAt}, 'YYYY-MM-DD')`),
       db
         .select({
           totalToday: sql<number>`count(*) filter (where ${complaints.createdAt} >= ${todayStart})::int`,

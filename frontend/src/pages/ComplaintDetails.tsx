@@ -32,6 +32,7 @@ export function ComplaintDetails({
   const { id } = useParams<{ id: string }>();
   const [complaint, setComplaint] = useState<Complaint | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const [nextStatus, setNextStatus] = useState<Status | ''>('');
   const [statusNote, setStatusNote] = useState('');
@@ -52,6 +53,7 @@ export function ComplaintDetails({
       }
 
       setLoading(true);
+      setLoadError(null);
       try {
         const result = await api.getComplaint(id);
         if (cancelled) {
@@ -64,7 +66,9 @@ export function ComplaintDetails({
         setOverridePriority(result.priority ?? '');
       } catch (error: unknown) {
         if (!cancelled) {
-          toast.error(getErrorMessage(error, 'Failed to load complaint'));
+          const message = getErrorMessage(error, 'Failed to load complaint');
+          setLoadError(message);
+          toast.error(message);
         }
       } finally {
         if (!cancelled) {
@@ -197,7 +201,7 @@ export function ComplaintDetails({
   }
 
   if (!complaint) {
-    return <div className="p-8">Complaint not found.</div>;
+    return <div className="p-8">{loadError ?? 'Complaint not found.'}</div>;
   }
 
   const showHelpfulPrompt =

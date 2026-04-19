@@ -64,7 +64,9 @@ complaintsRouter.get(
     const actor = getActorFromRequest(req);
     const query = listComplaintsQuerySchema.parse(req.query);
     const scopedQuery =
-      actor.role === "support_executive" ? { ...query, assignedTo: actor.name } : query;
+      actor.role === "support_executive"
+        ? { ...query, assignedTo: actor.name, assignedToExact: true }
+        : query;
     const result = await complaintsService.listComplaints(scopedQuery);
 
     const response: ApiSuccess<typeof result> = {
@@ -101,7 +103,9 @@ complaintsRouter.get(
     const actor = getActorFromRequest(req);
     const query = listComplaintsQuerySchema.parse(req.query);
     const scopedQuery =
-      actor.role === "support_executive" ? { ...query, assignedTo: actor.name } : query;
+      actor.role === "support_executive"
+        ? { ...query, assignedTo: actor.name, assignedToExact: true }
+        : query;
     const csv = await complaintsService.exportComplaintsCsv(scopedQuery);
 
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
@@ -119,10 +123,14 @@ complaintsRouter.get(
 
     const details = await complaintsService.getComplaintDetailsOrThrow(complaintId);
 
-    if (actor.role === "support_executive" && details.complaint.assignedTo !== actor.name) {
-      throw new AppError("You are not allowed to access this complaint", 403, "FORBIDDEN", {
-        complaintId,
-      });
+    if (actor.role === "support_executive") {
+      const assignedTo = details.complaint.assignedTo?.trim().toLowerCase();
+      const actorName = actor.name.trim().toLowerCase();
+      if (!assignedTo || assignedTo !== actorName) {
+        throw new AppError("You are not allowed to access this complaint", 403, "FORBIDDEN", {
+          complaintId,
+        });
+      }
     }
 
     const response: ApiSuccess<typeof details> = {

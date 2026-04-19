@@ -1,5 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Bar, BarChart, Cell, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 
 import { api } from '../api';
 import { Card } from '../components';
@@ -15,6 +29,8 @@ const SENTIMENT_COLORS: Record<string, string> = {
 };
 
 const DAY_ORDER = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export function QaDashboard() {
   const [trends, setTrends] = useState<QaTrends | null>(null);
@@ -58,12 +74,12 @@ export function QaDashboard() {
     return source
       .map((row) => {
         const date = new Date(row.date);
-        const day = Number.isNaN(date.getTime())
-          ? row.date
-          : date.toLocaleDateString(undefined, { weekday: 'short' });
+        const isValidDate = !Number.isNaN(date.getTime());
+        const day = isValidDate ? WEEKDAY_SHORT[date.getDay()] : row.date;
         return {
           ...row,
           day,
+          labelDate: isValidDate ? date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) : row.date,
         };
       })
       .sort((a, b) => DAY_ORDER.indexOf(a.day) - DAY_ORDER.indexOf(b.day));
@@ -121,13 +137,30 @@ export function QaDashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="p-5">
-          <h2 className="text-[15px] font-semibold text-zinc-900 mb-4">Keyword Frequency</h2>
+          <h2 className="text-[15px] font-semibold text-zinc-900">Keyword Frequency Bar Chart</h2>
+          <p className="text-xs text-zinc-500 mt-1 mb-4">
+            Shows the top 10 complaint keywords this week, sorted from highest to lowest by appearance count.
+          </p>
           <div className="h-[260px]">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={keywordData}>
-                <XAxis dataKey="key" angle={-20} textAnchor="end" height={60} />
-                <YAxis />
-                <Tooltip />
+              <BarChart data={keywordData} margin={{ top: 8, right: 12, left: 6, bottom: 30 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
+                <XAxis
+                  dataKey="key"
+                  angle={-20}
+                  textAnchor="end"
+                  interval={0}
+                  height={76}
+                  label={{ value: 'X-axis: Keywords', position: 'insideBottom', offset: -6, style: { fill: '#52525b', fontSize: 12 } }}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  label={{ value: 'Y-axis: Keyword Count', angle: -90, position: 'insideLeft', style: { fill: '#52525b', fontSize: 12 } }}
+                />
+                <Tooltip
+                  formatter={(value, name) => [`${value ?? 0} occurrences`, name === 'count' ? 'Keyword Count' : String(name)]}
+                  labelFormatter={(label) => `Keyword: ${label}`}
+                />
                 <Bar dataKey="count" fill="#18181b" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -135,23 +168,43 @@ export function QaDashboard() {
         </Card>
 
         <Card className="p-5">
-          <h2 className="text-[15px] font-semibold text-zinc-900 mb-4">Complaints Over Time</h2>
+          <h2 className="text-[15px] font-semibold text-zinc-900">Complaints Over Time Line Chart</h2>
+          <p className="text-xs text-zinc-500 mt-1 mb-4">
+            Shows daily complaint volume across the last 7 days by category: Product, Packaging, and Trade.
+          </p>
           <div className="h-[260px]">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={complaintsOverTimeData}>
-                <XAxis dataKey="day" />
-                <YAxis />
-                <Tooltip />
-                <Line dataKey="Product" stroke="#2563eb" strokeWidth={2} />
-                <Line dataKey="Packaging" stroke="#f59e0b" strokeWidth={2} />
-                <Line dataKey="Trade" stroke="#10b981" strokeWidth={2} />
+              <LineChart data={complaintsOverTimeData} margin={{ top: 8, right: 16, left: 8, bottom: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
+                <XAxis
+                  dataKey="day"
+                  label={{ value: 'X-axis: Day (Mon-Sun)', position: 'insideBottom', offset: -6, style: { fill: '#52525b', fontSize: 12 } }}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  label={{ value: 'Y-axis: Complaint Count', angle: -90, position: 'insideLeft', style: { fill: '#52525b', fontSize: 12 } }}
+                />
+                <Tooltip
+                  labelFormatter={(label, payload) => {
+                    const row = payload?.[0]?.payload as { labelDate?: string } | undefined;
+                    return row?.labelDate ?? String(label);
+                  }}
+                  formatter={(value, name) => [`${value ?? 0} complaints`, String(name)]}
+                />
+                <Legend verticalAlign="top" height={28} />
+                <Line dataKey="Product" stroke="#2563eb" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                <Line dataKey="Packaging" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                <Line dataKey="Trade" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
         </Card>
 
         <Card className="p-5">
-          <h2 className="text-[15px] font-semibold text-zinc-900 mb-4">Sentiment Distribution</h2>
+          <h2 className="text-[15px] font-semibold text-zinc-900">Sentiment Distribution Donut</h2>
+          <p className="text-xs text-zinc-500 mt-1 mb-4">
+            Shows the percentage split of weekly complaints by sentiment: Angry, Frustrated, Neutral, and Satisfied.
+          </p>
           <div className="h-[260px]">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -160,20 +213,42 @@ export function QaDashboard() {
                     <Cell key={entry.key} fill={SENTIMENT_COLORS[entry.key] ?? '#a1a1aa'} />
                   ))}
                 </Pie>
-                <Tooltip formatter={(value) => `${value}%`} />
+                <Legend verticalAlign="bottom" height={24} />
+                <Tooltip
+                  formatter={(value, name, item) => {
+                    const count = (item?.payload as { count?: number } | undefined)?.count ?? 0;
+                    return [`${value ?? 0}% (${count} complaints)`, String(name)];
+                  }}
+                />
               </PieChart>
             </ResponsiveContainer>
+          </div>
+          <div className="text-[11px] text-zinc-500 mt-2">
+            Segment value: percentage of total complaints this week.
           </div>
         </Card>
 
         <Card className="p-5">
-          <h2 className="text-[15px] font-semibold text-zinc-900 mb-4">Confidence Score Distribution</h2>
+          <h2 className="text-[15px] font-semibold text-zinc-900">Confidence Score Distribution Bar Chart</h2>
+          <p className="text-xs text-zinc-500 mt-1 mb-4">
+            Shows how many complaints fall into Low (0-40%), Medium (41-70%), and High (71-100%) AI confidence bands.
+          </p>
           <div className="h-[260px]">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={confidenceBandData}>
-                <XAxis dataKey="label" />
-                <YAxis />
-                <Tooltip />
+              <BarChart data={confidenceBandData} margin={{ top: 8, right: 12, left: 8, bottom: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
+                <XAxis
+                  dataKey="label"
+                  label={{ value: 'X-axis: Confidence Bands', position: 'insideBottom', offset: -6, style: { fill: '#52525b', fontSize: 12 } }}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  label={{ value: 'Y-axis: Complaint Count', angle: -90, position: 'insideLeft', style: { fill: '#52525b', fontSize: 12 } }}
+                />
+                <Tooltip
+                  formatter={(value) => [`${value ?? 0} complaints`, 'Complaint Count']}
+                  labelFormatter={(label) => `Band: ${label}`}
+                />
                 <Bar dataKey="count" radius={[4, 4, 0, 0]}>
                   {confidenceBandData.map((band) => (
                     <Cell

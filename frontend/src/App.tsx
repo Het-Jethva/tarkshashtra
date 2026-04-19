@@ -111,15 +111,25 @@ function canAccessAdminPath(user: CurrentUser, pathname: string): boolean {
 function AdminLayout({
   user,
   onSwitchRole,
+  onSwitchName,
   switchingRole,
 }: {
   user: CurrentUser;
   onSwitchRole: (role: CurrentUser['role']) => Promise<void>;
+  onSwitchName: (name: string) => Promise<void>;
   switchingRole: boolean;
 }) {
   const location = useLocation();
   const navigate = useNavigate();
   const defaultAdminRoute = getDefaultAdminRoute(user);
+  const [draftName, setDraftName] = useState(user.name);
+
+  useEffect(() => {
+    setDraftName(user.name);
+  }, [user.name]);
+
+  const normalizedDraftName = draftName.trim();
+  const canSaveName = normalizedDraftName.length > 0 && normalizedDraftName !== user.name && !switchingRole;
 
   const nav = useMemo(
     () =>
@@ -233,6 +243,28 @@ function AdminLayout({
                 </option>
               ))}
             </select>
+            <div className="mb-4 space-y-2">
+              <label htmlFor="name-switcher" className="block text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+                Agent Name
+              </label>
+              <input
+                id="name-switcher"
+                name="name"
+                value={draftName}
+                onChange={(event) => setDraftName(event.target.value)}
+                disabled={switchingRole}
+                className="w-full rounded-lg bg-white border border-zinc-200/80 px-3 py-2 text-[13px] text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/10 focus-visible:border-zinc-900 transition-[border-color,box-shadow] shadow-sm"
+                placeholder="Enter your name"
+              />
+              <button
+                type="button"
+                onClick={() => void onSwitchName(normalizedDraftName)}
+                disabled={!canSaveName}
+                className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-xs font-medium text-zinc-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed hover:bg-zinc-100"
+              >
+                Save Name
+              </button>
+            </div>
             <div className="flex items-center">
               <div className="h-9 w-9 rounded-full bg-zinc-100 border border-zinc-200/80 flex items-center justify-center font-semibold text-xs text-zinc-700 shadow-sm">
                 {roleInitials(user.role)}
@@ -326,6 +358,32 @@ export default function App() {
     }
   };
 
+  const handleSwitchName = async (nextName: string) => {
+    if (!user) {
+      return;
+    }
+
+    const normalizedName = nextName.trim();
+    if (!normalizedName || normalizedName === user.name) {
+      return;
+    }
+
+    const previousName = user.name;
+    setSwitchingRole(true);
+    api.setUserName(normalizedName);
+
+    try {
+      const currentUser = await api.getCurrentUser();
+      setUser(currentUser);
+      setAuthError(null);
+    } catch (error: unknown) {
+      api.setUserName(previousName);
+      setAuthError(getErrorMessage(error, 'Unable to switch user name'));
+    } finally {
+      setSwitchingRole(false);
+    }
+  };
+
   if (loadingUser) {
     return (
       <div className="min-h-screen bg-[#fcfcfc] flex flex-col items-center justify-center p-6">
@@ -378,7 +436,14 @@ export default function App() {
         
         <Route
           path="/admin"
-          element={<AdminLayout user={user} onSwitchRole={handleSwitchRole} switchingRole={switchingRole} />}
+          element={
+            <AdminLayout
+              user={user}
+              onSwitchRole={handleSwitchRole}
+              onSwitchName={handleSwitchName}
+              switchingRole={switchingRole}
+            />
+          }
         >
           <Route index element={<Navigate to={defaultAdminRoute} replace />} />
           <Route

@@ -82,7 +82,11 @@ function buildListWhereClause(filters: ListComplaintsQueryInput): SQL<unknown> |
     conditions.push(eq(complaints.sentiment, filters.sentiment));
   }
   if (filters.assignedTo) {
-    conditions.push(ilike(complaints.assignedTo, `%${filters.assignedTo}%`));
+    if (filters.assignedToExact) {
+      conditions.push(eq(complaints.assignedTo, filters.assignedTo));
+    } else {
+      conditions.push(ilike(complaints.assignedTo, `%${filters.assignedTo}%`));
+    }
   }
   if (typeof filters.confidenceLte === "number") {
     conditions.push(lte(complaints.confidence, filters.confidenceLte));

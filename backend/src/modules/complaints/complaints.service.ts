@@ -462,6 +462,7 @@ class ComplaintsService {
       page: 1,
       pageSize: 200,
       assignedTo: agentName,
+      assignedToExact: true,
       triageStatus: "success",
       duplicateOnly: undefined,
       repeatOnly: undefined,

@@ -44,6 +44,10 @@ export const listComplaintsQuerySchema = z.object({
   priority: z.enum(priorityEnum.enumValues).optional(),
   sentiment: z.enum(sentimentEnum.enumValues).optional(),
   assignedTo: z.string().trim().min(2).max(120).optional(),
+  assignedToExact: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((value) => (value === undefined ? undefined : value === "true")),
   confidenceLte: z.coerce.number().min(0).max(1).optional(),
   confidenceGte: z.coerce.number().min(0).max(1).optional(),
   duplicateOnly: z

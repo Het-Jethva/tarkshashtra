@@ -1,6 +1,20 @@
-import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 
 import { api } from '../api';
 import { Card, Input } from '../components';
@@ -26,6 +40,7 @@ export function Dashboard({ canExport, canStream: _canStream, streamUrl: _stream
   const [selectedAgent, setSelectedAgent] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const agentTableRef = useRef<HTMLDivElement | null>(null);
 
   void _canStream;
   void _streamUrl;
@@ -96,6 +111,27 @@ export function Dashboard({ canExport, canStream: _canStream, streamUrl: _stream
     };
   }, [baseOverview, selectedAgent]);
 
+  useEffect(() => {
+    if (!selectedAgent) {
+      return;
+    }
+
+    const handleOutsidePointer = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node | null;
+      if (agentTableRef.current && target && !agentTableRef.current.contains(target)) {
+        setSelectedAgent('');
+      }
+    };
+
+    document.addEventListener('mousedown', handleOutsidePointer);
+    document.addEventListener('touchstart', handleOutsidePointer);
+
+    return () => {
+      document.removeEventListener('mousedown', handleOutsidePointer);
+      document.removeEventListener('touchstart', handleOutsidePointer);
+    };
+  }, [selectedAgent]);
+
   if (error) {
     return (
       <Card className="p-6 border-red-200/60 bg-red-50/50 text-red-900">
@@ -131,11 +167,31 @@ export function Dashboard({ canExport, canStream: _canStream, streamUrl: _stream
     name: priority,
     value: priorityByKey.get(priority) ?? 0,
   }));
+  const totalOpenPriorityCount = priorityPieData.reduce((sum, row) => sum + row.value, 0);
 
   const agentPerformanceData = scopedOverview.agentWorkload.map((row) => ({
     name: row.agentName,
     score: row.performanceScore,
+    slaMetPercent: row.slaMetPercent,
+    avgResolutionHours: row.avgResolutionHours,
+    resolvedCount: row.resolvedCount,
+    assignedCount: row.assignedCount,
   }));
+
+  const resolutionTimeTrendData = [...scopedOverview.resolutionTimeTrend]
+    .filter((row) => Number.isFinite(row.avgResolutionHours))
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((row) => {
+      const date = new Date(row.date);
+      const isValidDate = !Number.isNaN(date.getTime());
+      return {
+        ...row,
+        shortDate: isValidDate ? date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : row.date,
+        fullDate: isValidDate
+          ? date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+          : row.date,
+      };
+    });
 
   const handleRowKeyDown = (event: ReactKeyboardEvent<HTMLTableRowElement>, agentName: string) => {
     if (event.key === 'Enter' || event.key === ' ') {
@@ -188,15 +244,7 @@ export function Dashboard({ canExport, canStream: _canStream, streamUrl: _stream
             className="max-w-[220px]"
           />
         </div>
-        {selectedAgent ? (
-          <div className="mb-3 text-xs text-zinc-600">
-            Filtering all charts for <span className="font-semibold text-zinc-900">{selectedAgent}</span>.{' '}
-            <button className="underline" onClick={() => setSelectedAgent('')}>
-              Clear filter
-            </button>
-          </div>
-        ) : null}
-        <div className="overflow-x-auto rounded-lg border border-zinc-200/70">
+        <div ref={agentTableRef} className="overflow-x-auto rounded-lg border border-zinc-200/70">
           <table className="w-full text-sm text-left bg-white">
             <thead className="bg-zinc-50 border-b border-zinc-200/70">
               <tr>
@@ -243,14 +291,27 @@ export function Dashboard({ canExport, canStream: _canStream, streamUrl: _stream
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="p-5">
-          <h2 className="text-[15px] font-semibold text-zinc-900 mb-4">Complaints by Category</h2>
+          <h2 className="text-[15px] font-semibold text-zinc-900">Complaints by Category Bar Chart</h2>
+          <p className="text-xs text-zinc-500 mt-1 mb-4">
+            Compares open vs resolved complaints for Product, Packaging, and Trade to show category resolution progress.
+          </p>
           <div className="h-[260px]">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={categoryChartData}>
+              <BarChart data={categoryChartData} margin={{ top: 8, right: 16, left: 8, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f4f4f5" />
-                <XAxis dataKey="category" />
-                <YAxis />
-                <Tooltip />
+                <XAxis
+                  dataKey="category"
+                  label={{ value: 'X-axis: Category', position: 'insideBottom', offset: -6, style: { fill: '#52525b', fontSize: 12 } }}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  label={{ value: 'Y-axis: Complaint Count', angle: -90, position: 'insideLeft', style: { fill: '#52525b', fontSize: 12 } }}
+                />
+                <Tooltip
+                  labelFormatter={(label) => `Category: ${label}`}
+                  formatter={(value, name) => [`${value ?? 0} complaints`, String(name)]}
+                />
+                <Legend verticalAlign="top" height={28} />
                 <Bar dataKey="Open" fill="#ef4444" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="Resolved" fill="#22c55e" radius={[4, 4, 0, 0]} />
               </BarChart>
@@ -259,7 +320,10 @@ export function Dashboard({ canExport, canStream: _canStream, streamUrl: _stream
         </Card>
 
         <Card className="p-5">
-          <h2 className="text-[15px] font-semibold text-zinc-900 mb-4">Priority Distribution</h2>
+          <h2 className="text-[15px] font-semibold text-zinc-900">Priority Distribution Donut</h2>
+          <p className="text-xs text-zinc-500 mt-1 mb-4">
+            Shows currently open complaints by priority level: High, Medium, and Low.
+          </p>
           <div className="h-[260px]">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -271,36 +335,106 @@ export function Dashboard({ canExport, canStream: _canStream, streamUrl: _stream
                     />
                   ))}
                 </Pie>
-                <Tooltip />
+                <Legend verticalAlign="bottom" height={24} />
+                <Tooltip
+                  formatter={(value, name) => {
+                    const count = Number(value ?? 0);
+                    const percent = totalOpenPriorityCount > 0 ? Math.round((count / totalOpenPriorityCount) * 100) : 0;
+                    return [`${count} open complaints (${percent}%)`, String(name)];
+                  }}
+                />
               </PieChart>
             </ResponsiveContainer>
           </div>
+          <div className="text-[11px] text-zinc-500 mt-2">X-axis: Priority Levels | Y-axis: Open Complaint Count</div>
         </Card>
 
         <Card className="p-5">
-          <h2 className="text-[15px] font-semibold text-zinc-900 mb-4">Resolution Time Trend</h2>
+          <h2 className="text-[15px] font-semibold text-zinc-900">Resolution Time Trend — Last 14 Days</h2>
+          <p className="text-xs text-zinc-500 mt-1 mb-4">
+            Average time taken to resolve complaints for each resolved day in the last 14 days.
+          </p>
           <div className="h-[260px]">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={scopedOverview.resolutionTimeTrend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f4f4f5" />
-                <XAxis dataKey="date" tickFormatter={(value: string) => value.slice(5)} />
-                <YAxis />
-                <Tooltip />
-                <Line type="monotone" dataKey="avgResolutionHours" stroke="#2563eb" strokeWidth={2} />
+              <LineChart data={resolutionTimeTrendData} margin={{ top: 8, right: 12, left: 8, bottom: 20 }}>
+                <CartesianGrid stroke="#e5e7eb" strokeDasharray="3 3" vertical={false} />
+                <XAxis
+                  dataKey="shortDate"
+                  label={{ value: 'Date', position: 'insideBottom', offset: -6, style: { fill: '#52525b', fontSize: 12 } }}
+                />
+                <YAxis
+                  domain={[0, 'auto']}
+                  allowDecimals={false}
+                  label={{ value: 'Avg Hours', angle: -90, position: 'insideLeft', style: { fill: '#52525b', fontSize: 12 } }}
+                />
+                <Tooltip
+                  labelFormatter={(label, payload) => {
+                    const row = payload?.[0]?.payload as { fullDate?: string } | undefined;
+                    return row?.fullDate ?? String(label);
+                  }}
+                  formatter={(value) => {
+                    const normalized = Number(value ?? 0);
+                    return [`${Number(normalized.toFixed(2))} hrs`, 'Avg Hours'];
+                  }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="avgResolutionHours"
+                  stroke="#4F46E5"
+                  strokeWidth={2}
+                  dot={{ r: 3, fill: '#4F46E5', stroke: '#4F46E5' }}
+                  activeDot={{ r: 5 }}
+                />
               </LineChart>
             </ResponsiveContainer>
           </div>
         </Card>
 
         <Card className="p-5">
-          <h2 className="text-[15px] font-semibold text-zinc-900 mb-4">Agent Performance</h2>
+          <h2 className="text-[15px] font-semibold text-zinc-900">Agent Performance Bar Chart</h2>
+          <p className="text-xs text-zinc-500 mt-1 mb-4">
+            Shows per-agent performance score (0-100) based on SLA met rate, resolution speed, and resolved volume.
+          </p>
           <div className="h-[260px]">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={agentPerformanceData}>
+              <BarChart data={agentPerformanceData} margin={{ top: 8, right: 16, left: 8, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f4f4f5" />
-                <XAxis dataKey="name" />
-                <YAxis domain={[0, 100]} />
-                <Tooltip />
+                <XAxis
+                  dataKey="name"
+                  label={{ value: 'X-axis: Agent Name', position: 'insideBottom', offset: -6, style: { fill: '#52525b', fontSize: 12 } }}
+                />
+                <YAxis
+                  domain={[0, 100]}
+                  label={{ value: 'Y-axis: Performance Score (0-100)', angle: -90, position: 'insideLeft', style: { fill: '#52525b', fontSize: 12 } }}
+                />
+                <Tooltip
+                  labelFormatter={(label) => `Agent: ${label}`}
+                  formatter={(value, name, item) => {
+                    if (name !== 'score') {
+                      return [String(value ?? ''), String(name)];
+                    }
+
+                    const payload = item?.payload as
+                      | {
+                          slaMetPercent?: number;
+                          avgResolutionHours?: number;
+                          resolvedCount?: number;
+                          assignedCount?: number;
+                        }
+                      | undefined;
+
+                    const score = Number(value ?? 0);
+                    const sla = payload?.slaMetPercent ?? 0;
+                    const avg = payload?.avgResolutionHours ?? 0;
+                    const resolved = payload?.resolvedCount ?? 0;
+                    const assigned = payload?.assignedCount ?? 0;
+
+                    return [
+                      `Score ${score} | SLA ${sla}% | Avg ${avg.toFixed(2)}h | Resolved ${resolved}/${assigned}`,
+                      'Performance',
+                    ];
+                  }}
+                />
                 <Bar dataKey="score" fill="#2563eb" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
