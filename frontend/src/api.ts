@@ -23,7 +23,18 @@ import type {
   WorkloadDistribution,
 } from './types';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api';
+const API_BASE = (() => {
+  const configuredBase = import.meta.env.VITE_API_BASE_URL?.trim();
+  if (configuredBase) {
+    return configuredBase.replace(/\/$/, '');
+  }
+
+  if (import.meta.env.DEV) {
+    return 'http://localhost:4000/api';
+  }
+
+  return '/api';
+})();
 const ROLE_STORAGE_KEY = 'triage.rbac.role';
 const NAME_STORAGE_KEY = 'triage.rbac.name';
 

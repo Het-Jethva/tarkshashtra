@@ -52,6 +52,18 @@ Production-ready TypeScript backend for AI-powered complaint classification, pri
    npm run db:migrate
    ```
 
+   For DigitalOcean production DB migrations from local:
+
+   ```bash
+   # PowerShell
+   $env:DATABASE_URL="postgresql://<user>:<password>@<host>:25060/<db>?sslmode=require"
+   npm run db:migrate
+   ```
+
+   App Platform deploys are configured to skip migrations by default
+   (`MIGRATE_ON_DEPLOY=false`). Set `MIGRATE_ON_DEPLOY=true` only when you
+   intentionally want the pre-deploy job to run migrations.
+
 6. Start API server:
 
    ```bash
