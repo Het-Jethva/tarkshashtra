@@ -10,6 +10,8 @@ import { getErrorMessage } from '../lib/errors';
 import { getSlaTraffic, sentimentEmoji } from '../lib/complaint-ui';
 import type { Category, Complaint, Paginated, Priority, QueueStats, Sentiment, UserRole } from '../types';
 
+const OVERRIDE_REASON_MIN_LENGTH = 5;
+
 function getQaSlaResult(complaint: Complaint): 'Met' | 'Breached' | 'Open' {
   if (complaint.resolvedAt && complaint.resolutionDueAt) {
     return new Date(complaint.resolvedAt).getTime() <= new Date(complaint.resolutionDueAt).getTime()
@@ -69,7 +71,7 @@ export function ComplaintQueue({
       (overridePriority && overridePriority !== drawerComplaint.priority)
     ),
   );
-  const canApplyOverride = hasOverrideChanges && overrideReason.trim().length > 0;
+  const canApplyOverride = hasOverrideChanges && overrideReason.trim().length >= OVERRIDE_REASON_MIN_LENGTH;
 
   useEffect(() => {
     let cancelled = false;
@@ -221,8 +223,8 @@ export function ComplaintQueue({
       return;
     }
 
-    if (!overrideReason.trim()) {
-      toast.error('Override reason is required');
+    if (overrideReason.trim().length < OVERRIDE_REASON_MIN_LENGTH) {
+      toast.error(`Override reason must be at least ${OVERRIDE_REASON_MIN_LENGTH} characters`);
       return;
     }
 
@@ -551,7 +553,7 @@ export function ComplaintQueue({
                         ) : null}
                       </td>
                       <td className="px-4 py-3 text-zinc-700">
-                        <div className="font-medium">
+                        <div className="font-medium mb-1">
                           <Badge>{complaint.category ?? 'Untriaged'}</Badge>
                         </div>
                         <div className="text-xs text-zinc-500">{Math.round((complaint.confidence ?? 0) * 100)}% confidence</div>
@@ -647,15 +649,15 @@ export function ComplaintQueue({
       </div>
 
       {(isManager || isQa) && drawerId ? (
-        <div className="fixed inset-0 z-40 bg-black/25 flex justify-end" onClick={closeDrawer}>
+        <div className="fixed inset-0 z-40 bg-black/25 flex justify-end overflow-y-auto" onClick={closeDrawer}>
           <div
             role="dialog"
             aria-modal="true"
             aria-labelledby="complaint-drawer-title"
-            className="h-full w-full max-w-[560px] bg-white shadow-2xl border-l border-zinc-200 overflow-y-auto overscroll-contain"
+            className="h-screen max-h-screen w-full max-w-[560px] bg-white shadow-2xl border-l border-zinc-200 flex flex-col"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="sticky top-0 bg-white border-b border-zinc-200 px-5 py-4 flex items-center justify-between">
+            <div className="shrink-0 sticky top-0 bg-white border-b border-zinc-200 px-5 py-4 flex items-center justify-between">
               <div>
                 <div className="text-xs uppercase tracking-wider text-zinc-500">Complaint Drawer</div>
                 <div id="complaint-drawer-title" className="font-semibold text-zinc-900">{drawerComplaint ? drawerComplaint.id.slice(0, 10) : drawerId.slice(0, 10)}</div>
@@ -663,7 +665,7 @@ export function ComplaintQueue({
               <Button variant="secondary" onClick={closeDrawer}>Close</Button>
             </div>
 
-            <div className="p-5 space-y-4">
+            <div className="flex-1 overflow-y-auto overscroll-contain p-5 space-y-4">
               {drawerLoading ? (
                 <div className="text-sm text-zinc-500">Loading complaint details…</div>
               ) : drawerError ? (
@@ -730,11 +732,15 @@ export function ComplaintQueue({
                         aria-label="Override reason"
                         value={overrideReason}
                         onChange={(event) => setOverrideReason(event.target.value)}
+                        minLength={OVERRIDE_REASON_MIN_LENGTH}
                         rows={3}
-                        placeholder="Override reason"
+                        placeholder={`Override reason (min ${OVERRIDE_REASON_MIN_LENGTH} chars)`}
                       />
+                      <div className="text-xs text-zinc-500">
+                        After changing category or priority, click <span className="font-medium">Submit Override</span>.
+                      </div>
                       <Button onClick={applyOverride} disabled={overrideSaving || !canApplyOverride} className="w-full">
-                        {overrideSaving ? 'Applying…' : 'Apply Override'}
+                        {overrideSaving ? 'Submitting…' : 'Submit Override'}
                       </Button>
                     </div>
                   ) : null}

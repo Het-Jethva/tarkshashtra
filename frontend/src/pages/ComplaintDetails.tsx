@@ -20,6 +20,8 @@ const ALLOWED_TRANSITIONS: Record<Status, Status[]> = {
   TriageFailed: ['Triaged', 'InProgress', 'WaitingCustomer', 'Resolved', 'Closed'],
 };
 
+const OVERRIDE_REASON_MIN_LENGTH = 5;
+
 export function ComplaintDetails({
   viewerRole,
   canUpdateStatus,
@@ -97,7 +99,7 @@ export function ComplaintDetails({
       (overridePriority && overridePriority !== complaint.priority)
     ),
   );
-  const canSubmitOverride = hasOverrideChanges && overrideReason.trim().length > 0;
+  const canSubmitOverride = hasOverrideChanges && overrideReason.trim().length >= OVERRIDE_REASON_MIN_LENGTH;
 
   const handleStatusUpdate = async () => {
     if (!id || !nextStatus || !complaint) {
@@ -164,8 +166,8 @@ export function ComplaintDetails({
     if (!id) {
       return;
     }
-    if (!overrideReason.trim()) {
-      toast.error('Override reason is required');
+    if (overrideReason.trim().length < OVERRIDE_REASON_MIN_LENGTH) {
+      toast.error(`Override reason must be at least ${OVERRIDE_REASON_MIN_LENGTH} characters`);
       return;
     }
 
@@ -405,11 +407,15 @@ export function ComplaintDetails({
                 aria-label="Override reason"
                 value={overrideReason}
                 onChange={(event) => setOverrideReason(event.target.value)}
+                minLength={OVERRIDE_REASON_MIN_LENGTH}
                 rows={3}
-                placeholder="Override reason (required)"
+                placeholder={`Override reason (min ${OVERRIDE_REASON_MIN_LENGTH} chars)`}
               />
+              <div className="text-xs text-zinc-500">
+                After changing category or priority, click <span className="font-medium">Submit Override</span>.
+              </div>
               <Button onClick={handleOverride} disabled={isUpdating || !canSubmitOverride} className="w-full">
-                Apply Override
+                Submit Override
               </Button>
               {complaint.managerOverridden ? (
                 <div className="text-xs text-zinc-600">Latest override reason: {complaint.managerOverrideReason}</div>

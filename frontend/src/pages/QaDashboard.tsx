@@ -143,7 +143,7 @@ export function QaDashboard() {
           </p>
           <div className="h-[260px]">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={keywordData} margin={{ top: 8, right: 12, left: 6, bottom: 30 }}>
+              <BarChart data={keywordData} margin={{ top: 8, right: 12, left: 18, bottom: 30 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
                 <XAxis
                   dataKey="key"
@@ -155,7 +155,9 @@ export function QaDashboard() {
                 />
                 <YAxis
                   allowDecimals={false}
-                  label={{ value: 'Y-axis: Keyword Count', angle: -90, position: 'insideLeft', style: { fill: '#52525b', fontSize: 12 } }}
+                  width={52}
+                  tickMargin={8}
+                  label={{ value: 'Keyword Count', angle: -90, position: 'left', style: { fill: '#52525b', fontSize: 12 } }}
                 />
                 <Tooltip
                   formatter={(value, name) => [`${value ?? 0} occurrences`, name === 'count' ? 'Keyword Count' : String(name)]}
@@ -174,7 +176,7 @@ export function QaDashboard() {
           </p>
           <div className="h-[260px]">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={complaintsOverTimeData} margin={{ top: 8, right: 16, left: 8, bottom: 20 }}>
+              <LineChart data={complaintsOverTimeData} margin={{ top: 8, right: 16, left: 18, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
                 <XAxis
                   dataKey="day"
@@ -182,7 +184,9 @@ export function QaDashboard() {
                 />
                 <YAxis
                   allowDecimals={false}
-                  label={{ value: 'Y-axis: Complaint Count', angle: -90, position: 'insideLeft', style: { fill: '#52525b', fontSize: 12 } }}
+                  width={52}
+                  tickMargin={8}
+                  label={{ value: 'Complaint Count', angle: -90, position: 'left', style: { fill: '#52525b', fontSize: 12 } }}
                 />
                 <Tooltip
                   labelFormatter={(label, payload) => {
@@ -235,7 +239,7 @@ export function QaDashboard() {
           </p>
           <div className="h-[260px]">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={confidenceBandData} margin={{ top: 8, right: 12, left: 8, bottom: 20 }}>
+              <BarChart data={confidenceBandData} margin={{ top: 8, right: 12, left: 18, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
                 <XAxis
                   dataKey="label"
@@ -243,7 +247,9 @@ export function QaDashboard() {
                 />
                 <YAxis
                   allowDecimals={false}
-                  label={{ value: 'Y-axis: Complaint Count', angle: -90, position: 'insideLeft', style: { fill: '#52525b', fontSize: 12 } }}
+                  width={52}
+                  tickMargin={8}
+                  label={{ value: 'Complaint Count', angle: -90, position: 'left', style: { fill: '#52525b', fontSize: 12 } }}
                 />
                 <Tooltip
                   formatter={(value) => [`${value ?? 0} complaints`, 'Complaint Count']}

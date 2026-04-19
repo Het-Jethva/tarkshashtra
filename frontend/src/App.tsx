@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { BrowserRouter, Routes, Route, Link, useLocation, useNavigate, Navigate, Outlet } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { cn } from './lib/utils';
+import { motion, AnimatePresence } from 'framer-motion';
 
 import { api } from './api';
 import { getErrorMessage } from './lib/errors';
@@ -14,6 +15,7 @@ import { ComplaintQueue } from './pages/ComplaintQueue';
 import { ComplaintDetails } from './pages/ComplaintDetails';
 import { QaDashboard } from './pages/QaDashboard';
 import { ReportsPage } from './pages/ReportsPage';
+import { LandingPage } from './pages/LandingPage';
 import { LayoutDashboard, Inbox, FilePlus2, Megaphone } from 'lucide-react';
 
 function getDefaultAdminRoute(user: CurrentUser): string {
@@ -122,14 +124,13 @@ function AdminLayout({
   const location = useLocation();
   const navigate = useNavigate();
   const defaultAdminRoute = getDefaultAdminRoute(user);
-  const [draftName, setDraftName] = useState(user.name);
+  const [draftNameOverride, setDraftNameOverride] = useState<string | null>(null);
 
-  useEffect(() => {
-    setDraftName(user.name);
-  }, [user.name]);
+  const draftName = draftNameOverride ?? user.name;
 
   const normalizedDraftName = draftName.trim();
-  const canSaveName = normalizedDraftName.length > 0 && normalizedDraftName !== user.name && !switchingRole;
+  const canSaveName =
+    draftNameOverride !== null && normalizedDraftName.length > 0 && normalizedDraftName !== user.name && !switchingRole;
 
   const nav = useMemo(
     () =>
@@ -205,7 +206,7 @@ function AdminLayout({
             <span className="font-semibold text-[15px] tracking-tight text-zinc-900">Triage AI</span>
           </div>
           <nav className="flex-1 px-4 py-6 space-y-1.5 overflow-y-auto">
-            <div className="px-3 text-xs font-medium text-zinc-400 mb-3 uppercase tracking-wider">Navigation</div>
+            <div className="px-3 text-xs font-semibold text-zinc-400 mb-4 uppercase tracking-widest">Navigation</div>
             {nav.map((item) => {
               const isActive = location.pathname.startsWith(item.href);
               return (
@@ -213,11 +214,26 @@ function AdminLayout({
                   key={item.name}
                   to={item.href}
                   className={cn(
-                    "group flex items-center px-3 py-2.5 text-[14px] font-medium rounded-lg transition-[background-color,color,box-shadow]",
-                    isActive && item.href !== '/admin' ? "bg-zinc-100 text-zinc-900 shadow-sm" : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"
+                    "relative group flex items-center px-3 py-2.5 text-[14px] font-medium rounded-xl transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/50",
+                    isActive && item.href !== '/admin' ? "text-zinc-900" : "text-zinc-600 hover:text-zinc-900"
                   )}
                 >
-                  <item.icon className={cn("mr-3 h-4 w-4 flex-shrink-0 transition-colors", isActive && item.href !== '/admin' ? "text-zinc-900" : "text-zinc-400 group-hover:text-zinc-600")} />
+                  {isActive && item.href !== '/admin' && (
+                    <motion.div
+                      layoutId="active-nav"
+                      className="absolute inset-0 bg-white shadow-[0_1px_3px_rgba(0,0,0,0.06),0_1px_2px_rgba(0,0,0,0.04)] border border-zinc-200/50 rounded-xl -z-10"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ type: "spring", stiffness: 500, damping: 35, mass: 1 }}
+                    />
+                  )}
+                  {!isActive && (
+                    <div className="absolute inset-0 bg-zinc-100/0 rounded-xl -z-10 transition-colors duration-200 group-hover:bg-zinc-100/50" />
+                  )}
+                  <item.icon className={cn(
+                    "mr-3 h-4 w-4 flex-shrink-0 transition-all duration-200", 
+                    isActive && item.href !== '/admin' ? "text-zinc-900 scale-110" : "text-zinc-400 group-hover:text-zinc-600"
+                  )} />
                   {item.name}
                 </Link>
               );
@@ -233,9 +249,12 @@ function AdminLayout({
               id="role-switcher"
               name="role"
               value={user.role}
-              onChange={(event) => void onSwitchRole(event.target.value as CurrentUser['role'])}
+              onChange={(event) => {
+                setDraftNameOverride(null);
+                void onSwitchRole(event.target.value as CurrentUser['role']);
+              }}
               disabled={switchingRole}
-              className="mb-4 w-full rounded-lg bg-white border border-zinc-200/80 px-3 py-2 text-[13px] text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/10 focus-visible:border-zinc-900 transition-[border-color,box-shadow] shadow-sm cursor-pointer"
+              className="mb-4 w-full rounded-lg bg-white border border-zinc-200/80 pl-3 pr-10 py-2 text-[13px] text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/10 focus-visible:border-zinc-900 transition-[border-color,box-shadow] shadow-sm cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2020%2020%22%20stroke%3D%22currentColor%22%20stroke-width%3D%221.5%22%3E%3Cpath%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20d%3D%22M6%208l4%204%204-4%22%2F%3E%3C%2Fsvg%3E')] bg-[position:right_0.75rem_center] bg-[length:1.25rem_1.25rem] bg-no-repeat"
             >
               {user.availableRoles.map((option) => (
                 <option key={option.role} value={option.role}>
@@ -251,14 +270,17 @@ function AdminLayout({
                 id="name-switcher"
                 name="name"
                 value={draftName}
-                onChange={(event) => setDraftName(event.target.value)}
+                onChange={(event) => setDraftNameOverride(event.target.value)}
                 disabled={switchingRole}
                 className="w-full rounded-lg bg-white border border-zinc-200/80 px-3 py-2 text-[13px] text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/10 focus-visible:border-zinc-900 transition-[border-color,box-shadow] shadow-sm"
                 placeholder="Enter your name"
               />
               <button
                 type="button"
-                onClick={() => void onSwitchName(normalizedDraftName)}
+                onClick={() => {
+                  setDraftNameOverride(normalizedDraftName);
+                  void onSwitchName(normalizedDraftName);
+                }}
                 disabled={!canSaveName}
                 className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-xs font-medium text-zinc-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed hover:bg-zinc-100"
               >
@@ -276,9 +298,19 @@ function AdminLayout({
             </div>
           </div>
         </div>
-        <main id="main-content" className="flex-1 overflow-y-auto relative">
+        <main id="main-content" className="flex-1 overflow-y-auto relative bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-zinc-50 via-[#fcfcfc] to-[#fcfcfc]">
           <div className="py-8 px-6 sm:px-8 lg:px-10 max-w-[1600px] mx-auto">
-            <Outlet />
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={location.pathname}
+                initial={{ opacity: 0, y: 12, scale: 0.99, filter: 'blur(8px)' }}
+                animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
+                exit={{ opacity: 0, y: -12, scale: 0.99, filter: 'blur(8px)' }}
+                transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+              >
+                <Outlet />
+              </motion.div>
+            </AnimatePresence>
           </div>
         </main>
       </div>
@@ -386,16 +418,32 @@ export default function App() {
 
   if (loadingUser) {
     return (
-      <div className="min-h-screen bg-[#fcfcfc] flex flex-col items-center justify-center p-6">
-        <div className="h-8 w-8 mb-4">
-          <svg className="animate-spin text-zinc-300" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
-        </div>
-        <p className="text-sm font-medium text-zinc-500">
-          {authError ?? 'Loading workspace…'}
-        </p>
+      <div className="min-h-screen bg-[#fcfcfc] flex flex-col items-center justify-center p-6 relative overflow-hidden">
+        {/* Subtle background glow for loading screen */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-zinc-200/50 rounded-full blur-[100px] pointer-events-none animate-pulse" />
+        
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.5, ease: "easeOut" }}
+          className="flex flex-col items-center z-10"
+        >
+          <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-zinc-950 text-white mb-6 shadow-2xl shadow-zinc-900/20">
+            {/* Spinning ring around the logo */}
+            <motion.div 
+              animate={{ rotate: 360 }}
+              transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+              className="absolute -inset-1 rounded-3xl border border-transparent border-t-zinc-500/50 border-r-zinc-500/50 opacity-70"
+            />
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-shield-check">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/>
+              <path d="m9 12 2 2 4-4"/>
+            </svg>
+          </div>
+          <p className="text-sm font-semibold tracking-wide text-zinc-600 uppercase">
+            {authError ?? 'Initializing Workspace...'}
+          </p>
+        </motion.div>
       </div>
     );
   }
@@ -432,7 +480,8 @@ export default function App() {
         }}
       />
       <Routes>
-        <Route path="/" element={<CustomerIntake />} />
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/submit" element={<CustomerIntake />} />
         
         <Route
           path="/admin"
