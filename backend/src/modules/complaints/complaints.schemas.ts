@@ -9,19 +9,63 @@ import {
   triageStatusEnum,
 } from "../../db/schema.js";
 
+const PERSON_NAME_REGEX = /^\p{L}+(?:[ '-]\p{L}+)*$/u;
+const REPEATED_CHARACTER_REGEX = /(.)\1{4,}/;
+const REPEATED_WORD_REGEX = /\b([\p{L}]{2,})\b(?:\s+\1\b){2,}/iu;
+
+function isMeaningfulComplaintText(value: string): boolean {
+  const normalized = value.trim().replace(/\s+/g, " ");
+  if (normalized.length < 15) {
+    return false;
+  }
+
+  if (REPEATED_CHARACTER_REGEX.test(normalized) || REPEATED_WORD_REGEX.test(normalized)) {
+    return false;
+  }
+
+  const words = normalized.match(/\p{L}{2,}/gu) ?? [];
+  const uniqueWords = new Set(words.map((word) => word.toLowerCase()));
+  return words.length >= 3 && uniqueWords.size >= 2;
+}
+
 export const createComplaintSchema = z.object({
   source: z.enum(complaintSourceEnum.enumValues),
-  content: z.string().trim().min(10).max(10000),
-  customerName: z.string().trim().min(2).max(120).optional(),
+  content: z
+    .string()
+    .trim()
+    .min(15, "Please provide more details about your complaint")
+    .max(10000)
+    .refine((value) => isMeaningfulComplaintText(value), "Please enter a meaningful complaint"),
+  customerName: z
+    .string()
+    .trim()
+    .min(2)
+    .max(120)
+    .regex(PERSON_NAME_REGEX, "Name should contain letters only")
+    .optional(),
   customerContact: z.string().trim().min(3).max(150).optional(),
 });
 
-const customerComplaintTextSchema = z.string().trim().min(10).max(10000);
+const customerComplaintTextSchema = z
+  .string()
+  .trim()
+  .min(15, "Please provide more details about your complaint")
+  .max(10000)
+  .refine((value) => isMeaningfulComplaintText(value), "Please enter a meaningful complaint");
 
 export const createDirectCustomerComplaintSchema = z
   .object({
-    customerName: z.string().trim().min(2).max(120),
-    customerContact: z.string().trim().min(3).max(150),
+    customerName: z
+      .string()
+      .trim()
+      .min(2, "Name is required")
+      .max(120)
+      .regex(PERSON_NAME_REGEX, "Name should contain letters only"),
+    customerContact: z
+      .string()
+      .trim()
+      .email("Please enter a valid email address")
+      .max(150),
     content: customerComplaintTextSchema.optional(),
     summary: customerComplaintTextSchema.optional(),
     complaint: customerComplaintTextSchema.optional(),

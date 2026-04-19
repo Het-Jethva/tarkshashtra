@@ -7,11 +7,26 @@ import { toast } from 'sonner';
 import { api } from '../api';
 import { Button, Card, Input, Textarea } from '../components';
 import { getErrorMessage } from '../lib/errors';
+import { isMeaningfulComplaintText, isValidPersonName } from '../lib/form-validation';
 
 const schema = z.object({
-  customerName: z.string().min(2, 'Name is required'),
-  customerContact: z.string().min(5, 'Contact info is required'),
-  content: z.string().min(10, 'Please provide more details about your complaint'),
+  customerName: z
+    .string()
+    .trim()
+    .min(2, 'Name is required')
+    .max(120, 'Name is too long')
+    .refine((value) => isValidPersonName(value), 'Name should contain letters only'),
+  customerContact: z
+    .string()
+    .trim()
+    .email('Please enter a valid email address')
+    .max(150, 'Email is too long'),
+  content: z
+    .string()
+    .trim()
+    .min(15, 'Please provide more details about your complaint')
+    .max(10000, 'Complaint is too long')
+    .refine((value) => isMeaningfulComplaintText(value), 'Please enter a meaningful complaint'),
 });
 
 type FormValues = z.infer<typeof schema>;
